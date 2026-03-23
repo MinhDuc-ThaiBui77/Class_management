@@ -72,9 +72,9 @@ namespace ClassManager.API.Controllers
 
         [HttpDelete("{id}")]
         [Authorize(Roles = "admin")]
-        public async Task<IActionResult> Deactivate(int id)
+        public async Task<IActionResult> Delete(int id)
         {
-            var ok = await _svc.DeactivateAsync(id);
+            var ok = await _svc.DeleteAsync(id);
             return ok ? NoContent() : NotFound();
         }
     }

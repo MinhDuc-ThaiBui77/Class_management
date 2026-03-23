@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { teachersApi } from '../api'
+import { useAuth } from '../hooks/useAuth'
 
 interface Teacher {
   id: number
@@ -14,11 +15,21 @@ interface Teacher {
 }
 
 export default function TeachersPage() {
+  const { isAdmin } = useAuth()
   const [teachers, setTeachers] = useState<Teacher[]>([])
 
-  useEffect(() => {
-    teachersApi.getAll().then(r => setTeachers(r.data))
-  }, [])
+  const loadTeachers = () => teachersApi.getAll().then(r => setTeachers(r.data))
+
+  useEffect(() => { loadTeachers() }, [])
+
+  const handleDelete = async (t: Teacher) => {
+    const msg = t.userEmail
+      ? `Xóa giáo viên "${t.fullName}" và tài khoản "${t.userEmail}"?`
+      : `Xóa giáo viên "${t.fullName}"?`
+    if (!confirm(msg)) return
+    await teachersApi.delete(t.id)
+    loadTeachers()
+  }
 
   return (
     <div>
@@ -37,6 +48,7 @@ export default function TeachersPage() {
               <th className="px-4 py-3 text-left">Email</th>
               <th className="px-4 py-3 text-left">Tài khoản</th>
               <th className="px-4 py-3 text-left">Lớp đang dạy</th>
+              {isAdmin && <th className="px-4 py-3 text-right"></th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -54,11 +66,19 @@ export default function TeachersPage() {
                     : <span className="text-xs text-gray-400">Chưa link</span>}
                 </td>
                 <td className="px-4 py-3 text-gray-500">{t.classCount} lớp</td>
+                {isAdmin && (
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => handleDelete(t)}
+                      className="text-red-400 hover:text-red-600 text-xs transition"
+                    >Xóa</button>
+                  </td>
+                )}
               </tr>
             ))}
             {teachers.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">Chưa có giáo viên nào</td>
+                <td colSpan={isAdmin ? 7 : 6} className="px-4 py-8 text-center text-gray-400">Chưa có giáo viên nào</td>
               </tr>
             )}
           </tbody>

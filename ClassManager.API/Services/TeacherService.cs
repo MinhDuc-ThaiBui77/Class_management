@@ -84,11 +84,24 @@ namespace ClassManager.API.Services
             return new TeacherResponse(teacher.Id, teacher.FullName, teacher.Phone, teacher.Email, teacher.Subject, teacher.Notes, teacher.Classes.Count, teacher.UserId, userEmail);
         }
 
-        public async Task<bool> DeactivateAsync(int id)
+        public async Task<bool> DeleteAsync(int id)
         {
-            var teacher = await _db.Teachers.FindAsync(id);
+            var teacher = await _db.Teachers.Include(t => t.Classes).FirstOrDefaultAsync(t => t.Id == id);
             if (teacher == null) return false;
-            teacher.IsActive = false;
+
+            // Gỡ giáo viên khỏi các lớp đang dạy
+            foreach (var cls in teacher.Classes)
+                cls.TeacherId = null;
+
+            // Xóa User account liên kết (nếu có)
+            if (teacher.UserId.HasValue)
+            {
+                var user = await _db.Users.FindAsync(teacher.UserId.Value);
+                if (user != null)
+                    _db.Users.Remove(user);
+            }
+
+            _db.Teachers.Remove(teacher);
             await _db.SaveChangesAsync();
             return true;
         }
