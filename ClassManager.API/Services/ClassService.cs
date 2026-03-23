@@ -19,7 +19,7 @@ namespace ClassManager.API.Services
                 .OrderBy(c => c.Name).ThenBy(c => c.Subject)
                 .Select(c => new ClassResponse(
                     c.Id, c.Name, c.Subject, c.Notes,
-                    c.StudentClasses.Count,
+                    c.StudentClasses.Count(sc => sc.Student.IsActive),
                     c.TeacherId, c.Teacher != null ? c.Teacher.FullName : null))
                 .ToListAsync();
         }
@@ -30,7 +30,7 @@ namespace ClassManager.API.Services
                 .Include(c => c.StudentClasses)
                 .Include(c => c.Teacher)
                 .FirstOrDefaultAsync(c => c.Id == id);
-            return c == null ? null : new ClassResponse(c.Id, c.Name, c.Subject, c.Notes, c.StudentClasses.Count, c.TeacherId, c.Teacher?.FullName);
+            return c == null ? null : new ClassResponse(c.Id, c.Name, c.Subject, c.Notes, c.StudentClasses.Count(sc => sc.Student.IsActive), c.TeacherId, c.Teacher?.FullName);
         }
 
         public async Task<ClassResponse> CreateAsync(ClassRequest req)
@@ -79,7 +79,7 @@ namespace ClassManager.API.Services
         public async Task<List<ClassStudentItem>> GetStudentsAsync(int classId)
         {
             return await _db.StudentClasses
-                .Where(sc => sc.ClassId == classId)
+                .Where(sc => sc.ClassId == classId && sc.Student.IsActive)
                 .OrderBy(sc => sc.Student.FullName)
                 .Select(sc => new ClassStudentItem(
                     sc.StudentId, sc.Student.FullName, sc.Student.Phone, sc.EnrolledDate))
