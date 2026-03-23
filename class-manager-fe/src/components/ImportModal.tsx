@@ -154,7 +154,7 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
                   >
                     <option value="">— Không gán vào lớp —</option>
                     {classes.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
+                      <option key={c.id} value={c.id}>{c.name} - {c.subject}</option>
                     ))}
                   </select>
                 </div>
