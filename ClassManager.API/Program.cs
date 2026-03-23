@@ -57,6 +57,26 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
 
+    // Schema patch: idempotent — chạy an toàn dù đã hoặc chưa áp dụng
+    db.Database.ExecuteSqlRaw("""
+        DO $$ BEGIN
+            -- Đổi tên Phone → Address trong Students (nếu chưa đổi)
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Students' AND column_name = 'Phone'
+            ) THEN
+                ALTER TABLE "Students" RENAME COLUMN "Phone" TO "Address";
+            END IF;
+            -- Thêm StartDate vào Classes (nếu chưa có)
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Classes' AND column_name = 'StartDate'
+            ) THEN
+                ALTER TABLE "Classes" ADD COLUMN "StartDate" timestamp with time zone;
+            END IF;
+        END $$;
+        """);
+
     // Đảm bảo tài khoản admin mặc định luôn tồn tại
     if (!db.Users.Any(u => u.Email == "admin@classmanager.local"))
     {
