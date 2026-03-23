@@ -18,7 +18,7 @@ namespace ClassManager.API.Services
             var ws = wb.AddWorksheet("Học sinh");
 
             // Header
-            var headers = new[] { "Họ tên *", "Số điện thoại", "SĐT phụ huynh", "Ngày sinh (yyyy-mm-dd)", "Ghi chú" };
+            var headers = new[] { "Họ tên *", "Địa chỉ", "SĐT phụ huynh", "Ngày sinh (yyyy-mm-dd)", "Ghi chú" };
             for (int i = 0; i < headers.Length; i++)
             {
                 ws.Cell(1, i + 1).Value = headers[i];
@@ -28,7 +28,7 @@ namespace ClassManager.API.Services
 
             // Dữ liệu mẫu
             ws.Cell(2, 1).Value = "Nguyễn Văn A";
-            ws.Cell(2, 2).Value = "0912345678";
+            ws.Cell(2, 2).Value = "123 Lê Lợi, Q1, TP.HCM";
             ws.Cell(2, 3).Value = "0987654321";
             ws.Cell(2, 4).Value = "2010-05-20";
             ws.Cell(2, 5).Value = "Học sinh giỏi";
@@ -48,10 +48,10 @@ namespace ClassManager.API.Services
             var errors  = new List<ImportRowError>();
             var createdIds = new List<int>();
 
-            // Load phone numbers đã có sẵn để check trùng
-            var existingPhones = await _db.Students
-                .Where(s => s.IsActive && s.Phone != "")
-                .Select(s => s.Phone)
+            // Dedup theo (FullName + ParentPhone) — tránh import trùng
+            var existingKeys = await _db.Students
+                .Where(s => s.IsActive)
+                .Select(s => s.FullName.ToLower() + "|" + s.ParentPhone)
                 .ToHashSetAsync();
 
             foreach (var (row, idx) in rows.Select((r, i) => (r, i + 2)))
@@ -62,8 +62,9 @@ namespace ClassManager.API.Services
                     continue;
                 }
 
-                // Skip nếu SĐT đã tồn tại
-                if (!string.IsNullOrWhiteSpace(row.Phone) && existingPhones.Contains(row.Phone.Trim()))
+                // Skip nếu (tên + SĐT PH) đã tồn tại
+                var key = row.FullName.Trim().ToLower() + "|" + (row.ParentPhone?.Trim() ?? "");
+                if (existingKeys.Contains(key))
                 {
                     skipped++;
                     continue;
@@ -72,7 +73,7 @@ namespace ClassManager.API.Services
                 var student = new Student
                 {
                     FullName    = row.FullName.Trim(),
-                    Phone       = row.Phone?.Trim() ?? "",
+                    Address     = row.Address?.Trim() ?? "",
                     ParentPhone = row.ParentPhone?.Trim() ?? "",
                     DateOfBirth = row.DateOfBirth.HasValue
                         ? DateTime.SpecifyKind(row.DateOfBirth.Value, DateTimeKind.Utc)
@@ -84,8 +85,7 @@ namespace ClassManager.API.Services
                 _db.Students.Add(student);
                 await _db.SaveChangesAsync();
                 createdIds.Add(student.Id);
-                if (!string.IsNullOrWhiteSpace(student.Phone))
-                    existingPhones.Add(student.Phone);
+                existingKeys.Add(key);
                 created++;
             }
 
@@ -122,7 +122,7 @@ namespace ClassManager.API.Services
         }
 
         // ── Parse Excel rows ──────────────────────────────────────────
-        private static List<(string? FullName, string? Phone, string? ParentPhone, DateTime? DateOfBirth, string? Notes)>
+        private static List<(string? FullName, string? Address, string? ParentPhone, DateTime? DateOfBirth, string? Notes)>
             ParseRows(Stream stream)
         {
             var result = new List<(string?, string?, string?, DateTime?, string?)>();
@@ -133,7 +133,7 @@ namespace ClassManager.API.Services
             for (int r = 2; r <= lastRow; r++)
             {
                 var fullName    = ws.Cell(r, 1).GetString().Trim();
-                var phone       = ws.Cell(r, 2).GetString().Trim();
+                var address     = ws.Cell(r, 2).GetString().Trim();
                 var parentPhone = ws.Cell(r, 3).GetString().Trim();
                 var dobStr      = ws.Cell(r, 4).GetString().Trim();
                 var notes       = ws.Cell(r, 5).GetString().Trim();
@@ -142,12 +142,12 @@ namespace ClassManager.API.Services
                 if (!string.IsNullOrEmpty(dobStr) && DateTime.TryParse(dobStr, out var parsed))
                     dob = parsed;
 
-                if (string.IsNullOrEmpty(fullName) && string.IsNullOrEmpty(phone))
+                if (string.IsNullOrEmpty(fullName) && string.IsNullOrEmpty(address))
                     continue; // bỏ qua hàng trống
 
                 result.Add((
                     string.IsNullOrEmpty(fullName) ? null : fullName,
-                    string.IsNullOrEmpty(phone) ? null : phone,
+                    string.IsNullOrEmpty(address) ? null : address,
                     string.IsNullOrEmpty(parentPhone) ? null : parentPhone,
                     dob,
                     string.IsNullOrEmpty(notes) ? null : notes

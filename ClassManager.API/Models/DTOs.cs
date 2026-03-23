@@ -8,9 +8,9 @@ namespace ClassManager.API.Models.DTOs
 
     // ── Class ────────────────────────────────────────────────────────
 
-    public record ClassRequest(string Name, string Subject, int? TeacherId, string Notes = "");
+    public record ClassRequest(string Name, string Subject, int? TeacherId, string Notes = "", DateTime? StartDate = null);
 
-    public record ClassResponse(int Id, string Name, string Subject, string Notes, int StudentCount, int? TeacherId, string? TeacherName);
+    public record ClassResponse(int Id, string Name, string Subject, string Notes, int StudentCount, int? TeacherId, string? TeacherName, DateTime? StartDate = null);
 
     public record ClassStudentItem(int StudentId, string FullName, string Phone, DateTime EnrolledDate);
 
@@ -26,9 +26,11 @@ namespace ClassManager.API.Models.DTOs
 
     // ── Student ──────────────────────────────────────────────────────
 
+    public record StudentClassInfo(string ClassName, string Subject, string? TeacherName);
+
     public record StudentRequest(
         string FullName,
-        string Phone,
+        string Address,
         string ParentPhone,
         DateTime? DateOfBirth,
         DateTime? EnrolledDate,
@@ -38,12 +40,14 @@ namespace ClassManager.API.Models.DTOs
     public record StudentResponse(
         int Id,
         string FullName,
-        string Phone,
+        string Address,
         string ParentPhone,
         DateTime? DateOfBirth,
         DateTime EnrolledDate,
         string Notes,
-        bool IsActive
+        bool IsActive,
+        int ClassCount,
+        List<StudentClassInfo> Classes
     );
 
     // ── Session ──────────────────────────────────────────────────────

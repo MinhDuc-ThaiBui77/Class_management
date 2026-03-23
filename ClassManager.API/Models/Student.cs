@@ -4,7 +4,7 @@ namespace ClassManager.API.Models
     {
         public int Id { get; set; }
         public string FullName { get; set; } = "";
-        public string Phone { get; set; } = "";
+        public string Address { get; set; } = "";
         public string ParentPhone { get; set; } = "";
         public DateTime? DateOfBirth { get; set; }
         public DateTime EnrolledDate { get; set; } = DateTime.UtcNow;
