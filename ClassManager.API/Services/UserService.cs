@@ -235,9 +235,13 @@ namespace ClassManager.API.Services
             var user = await _db.Users.FindAsync(id);
             if (user == null) return (false, null);
 
-            // Unlink teacher profile nếu có (không xóa teacher profile)
+            // Deactivate teacher profile nếu có
             var teacher = await _db.Teachers.FirstOrDefaultAsync(t => t.UserId == id);
-            if (teacher != null) teacher.UserId = null;
+            if (teacher != null)
+            {
+                teacher.UserId   = null;
+                teacher.IsActive = false;
+            }
 
             _db.Users.Remove(user);
             await _db.SaveChangesAsync();
@@ -252,6 +256,11 @@ namespace ClassManager.API.Services
             if (user.Id == requesterId)
                 return (null, "Không thể tự vô hiệu hóa tài khoản của chính mình.");
             user.IsActive = !user.IsActive;
+
+            // Sync trạng thái teacher theo account
+            var teacher = await _db.Teachers.FirstOrDefaultAsync(t => t.UserId == user.Id);
+            if (teacher != null) teacher.IsActive = user.IsActive;
+
             await _db.SaveChangesAsync();
             var teacherId   = await _db.Teachers.Where(t => t.UserId == user.Id).Select(t => (int?)t.Id).FirstOrDefaultAsync();
             var teacherName = await _db.Teachers.Where(t => t.UserId == user.Id).Select(t => t.FullName).FirstOrDefaultAsync();
