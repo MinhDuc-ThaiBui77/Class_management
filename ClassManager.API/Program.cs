@@ -74,6 +74,20 @@ using (var scope = app.Services.CreateScope())
             ) THEN
                 ALTER TABLE "Classes" ADD COLUMN "StartDate" timestamp with time zone;
             END IF;
+            -- Thêm TotalSessions vào Classes (nếu chưa có)
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Classes' AND column_name = 'TotalSessions'
+            ) THEN
+                ALTER TABLE "Classes" ADD COLUMN "TotalSessions" integer;
+            END IF;
+            -- Thêm TuitionFee vào Classes (nếu chưa có)
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Classes' AND column_name = 'TuitionFee'
+            ) THEN
+                ALTER TABLE "Classes" ADD COLUMN "TuitionFee" numeric(12,2);
+            END IF;
         END $$;
         """);
 
