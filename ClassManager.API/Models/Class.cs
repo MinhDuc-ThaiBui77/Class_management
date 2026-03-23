@@ -6,6 +6,8 @@ namespace ClassManager.API.Models
         public string Name { get; set; } = "";       // 9A, 9B, 8C...
         public string Subject { get; set; } = "";    // Toán, Văn, Anh...
         public string Notes { get; set; } = "";
+        public int? TotalSessions { get; set; }
+        public decimal? TuitionFee { get; set; }
         public DateTime? StartDate { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

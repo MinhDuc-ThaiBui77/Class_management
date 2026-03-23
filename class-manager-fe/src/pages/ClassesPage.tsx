@@ -11,6 +11,8 @@ interface Class {
   studentCount: number
   teacherId: number | null
   teacherName: string | null
+  totalSessions: number | null
+  tuitionFee: number | null
 }
 
 interface Teacher {
@@ -45,7 +47,7 @@ function parseName(name: string) {
   return { khoi: '', nhom: 'A', so: '1' }
 }
 
-const emptyForm = { khoi: '', nhom: 'A', so: '1', subject: '', teacherId: '' as string | number, notes: '' }
+const emptyForm = { khoi: '', nhom: 'A', so: '1', subject: '', teacherId: '' as string | number, notes: '', totalSessions: '' as string | number, tuitionFee: '' as string | number }
 
 export default function ClassesPage() {
   const { isAdmin } = useAuth()
@@ -95,7 +97,7 @@ export default function ClassesPage() {
   const openEdit = (cls: Class) => {
     setEditing(cls)
     const parsed = parseName(cls.name)
-    setForm({ ...parsed, subject: cls.subject, teacherId: cls.teacherId ?? '', notes: cls.notes })
+    setForm({ ...parsed, subject: cls.subject, teacherId: cls.teacherId ?? '', notes: cls.notes, totalSessions: cls.totalSessions ?? '', tuitionFee: cls.tuitionFee ?? '' })
     setError('')
     setShowForm(true)
   }
@@ -111,6 +113,8 @@ export default function ClassesPage() {
         subject: form.subject,
         teacherId: form.teacherId === '' ? null : Number(form.teacherId),
         notes: form.notes,
+        totalSessions: form.totalSessions === '' ? null : Number(form.totalSessions),
+        tuitionFee: form.tuitionFee === '' ? null : Number(form.tuitionFee),
       }
       if (editing) {
         await classesApi.update(editing.id, payload)
@@ -120,7 +124,7 @@ export default function ClassesPage() {
       setShowForm(false)
       loadClasses()
       if (selected && editing?.id === selected.id) {
-        setSelected(prev => prev ? { ...prev, name, subject: form.subject, teacherId: payload.teacherId } : null)
+        setSelected(prev => prev ? { ...prev, name, subject: form.subject, teacherId: payload.teacherId, totalSessions: payload.totalSessions ?? null, tuitionFee: payload.tuitionFee ?? null } : null)
       }
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Có lỗi xảy ra.')
@@ -230,7 +234,11 @@ export default function ClassesPage() {
               <h3 className="text-lg font-semibold text-gray-800">
                 {selected.name} <span className="text-blue-600">· {selected.subject}</span>
               </h3>
-              <p className="text-sm text-gray-400">{enrolled.length} học sinh trong lớp</p>
+              <div className="flex gap-4 mt-1 text-sm text-gray-500">
+                <span>{enrolled.length} học sinh</span>
+                {selected.totalSessions != null && <span>· {selected.totalSessions} buổi</span>}
+                {selected.tuitionFee != null && <span>· Học phí: {selected.tuitionFee.toLocaleString('vi-VN')}đ</span>}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -377,6 +385,30 @@ export default function ClassesPage() {
                     </>
                   )
                 })()}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Số buổi học</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.totalSessions}
+                    onChange={e => setForm(f => ({ ...f, totalSessions: e.target.value }))}
+                    placeholder="VD: 24"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Học phí (VNĐ)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.tuitionFee}
+                    onChange={e => setForm(f => ({ ...f, tuitionFee: e.target.value }))}
+                    placeholder="VD: 500000"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Ghi chú</label>
