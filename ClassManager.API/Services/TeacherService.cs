@@ -7,7 +7,10 @@ namespace ClassManager.API.Services
 {
     public static class SubjectList
     {
-        public static readonly string[] Valid = ["Toán", "Văn", "Tiếng Anh"];
+        public static readonly string[] Valid = [
+            "Toán", "Văn", "Tiếng Anh", "Lý", "Hoá",
+            "Luyện viết TH 1", "Luyện viết TH 2", "Luyện viết TH 3", "Luyện viết TH 4", "Luyện viết TH 5"
+        ];
     }
 
     public class TeacherService
