@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { classesApi, studentsApi, teachersApi } from '../api'
 import { useAuth } from '../hooks/useAuth'
+import ImportModal from '../components/ImportModal'
 
 interface Class {
   id: number
@@ -35,6 +36,7 @@ const emptyForm = { name: '', subject: '', teacherId: '' as string | number, not
 export default function ClassesPage() {
   const { isAdmin } = useAuth()
   const [classes, setClasses] = useState<Class[]>([])
+  const [showImport, setShowImport] = useState(false)
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Class | null>(null)
@@ -213,8 +215,16 @@ export default function ClassesPage() {
             <div className="grid grid-cols-2 gap-4">
               {/* Học sinh trong lớp */}
               <div className="bg-white rounded-xl border border-gray-100">
-                <div className="px-4 py-3 border-b border-gray-50">
+                <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
                   <p className="text-sm font-medium text-gray-700">Đang học</p>
+                  {isAdmin && (
+                    <button
+                      onClick={() => setShowImport(true)}
+                      className="text-xs text-blue-500 hover:text-blue-700 transition"
+                    >
+                      Import Excel
+                    </button>
+                  )}
                 </div>
                 <div className="divide-y divide-gray-50">
                   {enrolled.map(s => (
@@ -340,6 +350,14 @@ export default function ClassesPage() {
             </form>
           </div>
         </div>
+      )}
+      {showImport && selected && (
+        <ImportModal
+          mode="class"
+          classId={selected.id}
+          onClose={() => setShowImport(false)}
+          onDone={() => selectClass(selected)}
+        />
       )}
     </div>
   )

@@ -13,6 +13,7 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
 
 // ── Services (Dependency Injection) ──────────────────────────────
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<TeacherService>();
 builder.Services.AddScoped<StudentService>();

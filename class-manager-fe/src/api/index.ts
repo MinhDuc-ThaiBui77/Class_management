@@ -95,6 +95,22 @@ export const usersApi = {
     api.put('/users/me/password', { currentPassword, newPassword }),
 }
 
+// ── Import ────────────────────────────────────────────────────────
+export const importApi = {
+  downloadTemplate: () =>
+    api.get('/students/import-template', { responseType: 'blob' }),
+  importStudents: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/students/import', form)
+  },
+  importToClass: (classId: number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post(`/classes/${classId}/students/import`, form)
+  },
+}
+
 // ── Payments ──────────────────────────────────────────────────────
 export const paymentsApi = {
   getMonthly: (month: number, year: number) =>

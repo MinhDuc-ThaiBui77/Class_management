@@ -74,6 +74,12 @@ namespace ClassManager.API.Models.DTOs
 
     public record AvailableTeacherItem(int Id, string FullName, string Subject);
 
+    // ── Import ───────────────────────────────────────────────────────
+
+    public record ImportRowError(int Row, string Message);
+
+    public record ImportResult(int Created, int Skipped, List<ImportRowError> Errors);
+
     // ── Payment ──────────────────────────────────────────────────────
 
     public record PaymentRequest(int StudentId, decimal Amount, int MonthOf, int YearOf, string Notes = "");

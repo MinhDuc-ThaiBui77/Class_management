@@ -13,7 +13,9 @@ namespace ClassManager.API.Controllers
     {
         private readonly StudentService _svc;
         private readonly UserService    _userSvc;
-        public StudentsController(StudentService svc, UserService userSvc) { _svc = svc; _userSvc = userSvc; }
+        private readonly ImportService  _importSvc;
+        public StudentsController(StudentService svc, UserService userSvc, ImportService importSvc)
+        { _svc = svc; _userSvc = userSvc; _importSvc = importSvc; }
 
         private int  CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         private bool IsAdmin       => User.IsInRole("admin");
@@ -68,6 +70,36 @@ namespace ClassManager.API.Controllers
         {
             var ok = await _svc.DeleteAsync(id);
             return ok ? NoContent() : NotFound();
+        }
+
+        // GET /api/students/import-template — tải file Excel mẫu
+        [HttpGet("import-template")]
+        [Authorize(Roles = "admin")]
+        public IActionResult GetImportTemplate()
+        {
+            var bytes = _importSvc.GenerateTemplate();
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "template-hoc-sinh.xlsx");
+        }
+
+        // POST /api/students/import — import danh sách học sinh
+        [HttpPost("import")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> Import(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { message = "Vui lòng chọn file Excel." });
+            if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "Chỉ hỗ trợ file .xlsx" });
+            try
+            {
+                using var stream = file.OpenReadStream();
+                var (result, _) = await _importSvc.ImportStudentsAsync(stream);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = $"Lỗi đọc file: {ex.Message}" });
+            }
         }
     }
 }

@@ -11,9 +11,11 @@ namespace ClassManager.API.Controllers
     [Authorize]
     public class ClassesController : ControllerBase
     {
-        private readonly ClassService _svc;
-        private readonly UserService  _userSvc;
-        public ClassesController(ClassService svc, UserService userSvc) { _svc = svc; _userSvc = userSvc; }
+        private readonly ClassService  _svc;
+        private readonly UserService   _userSvc;
+        private readonly ImportService _importSvc;
+        public ClassesController(ClassService svc, UserService userSvc, ImportService importSvc)
+        { _svc = svc; _userSvc = userSvc; _importSvc = importSvc; }
 
         private int    CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         private bool   IsAdmin       => User.IsInRole("admin");
@@ -90,6 +92,31 @@ namespace ClassManager.API.Controllers
         {
             var ok = await _svc.UnenrollAsync(id, studentId);
             return ok ? NoContent() : NotFound();
+        }
+
+        // POST /api/classes/{id}/students/import — import + enroll vào lớp
+        [HttpPost("{id}/students/import")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> ImportStudents(int id, IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { message = "Vui lòng chọn file Excel." });
+            if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "Chỉ hỗ trợ file .xlsx" });
+            try
+            {
+                using var stream = file.OpenReadStream();
+                var result = await _importSvc.ImportAndEnrollAsync(id, stream);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = $"Lỗi đọc file: {ex.Message}" });
+            }
         }
     }
 }

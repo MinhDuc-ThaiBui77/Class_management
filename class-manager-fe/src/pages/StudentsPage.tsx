@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { studentsApi } from '../api'
 import { useAuth } from '../hooks/useAuth'
+import ImportModal from '../components/ImportModal'
 
 interface Student {
   id: number
@@ -21,6 +22,7 @@ export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([])
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [editing, setEditing] = useState<Student | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [error, setError] = useState('')
@@ -97,12 +99,20 @@ export default function StudentsPage() {
           <p className="text-sm text-gray-400">{students.length} học sinh</p>
         </div>
         {isAdmin && (
-          <button
-            onClick={openAdd}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
-          >
-            + Thêm học sinh
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowImport(true)}
+              className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 transition"
+            >
+              Import Excel
+            </button>
+            <button
+              onClick={openAdd}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+            >
+              + Thêm học sinh
+            </button>
+          </div>
         )}
       </div>
 
@@ -212,6 +222,14 @@ export default function StudentsPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {showImport && (
+        <ImportModal
+          mode="students"
+          onClose={() => setShowImport(false)}
+          onDone={() => loadStudents(search)}
+        />
       )}
     </div>
   )
