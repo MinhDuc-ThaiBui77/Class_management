@@ -27,12 +27,15 @@ export default function StudentsPage() {
   const [form, setForm] = useState(emptyForm)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   useEffect(() => { loadStudents() }, [])
 
   const loadStudents = async (kw = '') => {
     const res = await studentsApi.getAll(kw || undefined)
     setStudents(res.data)
+    setSelected(new Set())
   }
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,6 +94,37 @@ export default function StudentsPage() {
     loadStudents(search)
   }
 
+  const allSelected = students.length > 0 && students.every(s => selected.has(s.id))
+  const someSelected = students.some(s => selected.has(s.id))
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(students.map(s => s.id)))
+    }
+  }
+
+  const toggleOne = (id: number) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Xóa ${selected.size} học sinh đã chọn? Hành động này không thể hoàn tác.`)) return
+    setBulkDeleting(true)
+    try {
+      await Promise.all([...selected].map(id => studentsApi.delete(id)))
+      loadStudents(search)
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -125,11 +159,42 @@ export default function StudentsPage() {
         className="w-full max-w-sm border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
 
+      {/* Bulk action bar */}
+      {isAdmin && someSelected && (
+        <div className="flex items-center gap-3 mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+          <span className="text-blue-700 font-medium">Đang chọn {selected.size} học sinh</span>
+          <button
+            onClick={handleBulkDelete}
+            disabled={bulkDeleting}
+            className="ml-auto bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-xs font-medium transition disabled:opacity-50"
+          >
+            {bulkDeleting ? 'Đang xóa...' : `Xóa ${selected.size} học sinh`}
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="text-gray-500 hover:text-gray-700 px-3 py-1 rounded-lg border border-gray-200 text-xs transition"
+          >
+            Bỏ chọn
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
             <tr>
+              {isAdmin && (
+                <th className="px-4 py-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={el => { if (el) el.indeterminate = someSelected && !allSelected }}
+                    onChange={toggleAll}
+                    className="cursor-pointer"
+                  />
+                </th>
+              )}
               <th className="px-4 py-3 text-left">Họ tên</th>
               <th className="px-4 py-3 text-left">Điện thoại</th>
               <th className="px-4 py-3 text-left">ĐT phụ huynh</th>
@@ -140,7 +205,17 @@ export default function StudentsPage() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {students.map(s => (
-              <tr key={s.id} className="hover:bg-gray-50 transition">
+              <tr key={s.id} className={`hover:bg-gray-50 transition ${selected.has(s.id) ? 'bg-blue-50' : ''}`}>
+                {isAdmin && (
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(s.id)}
+                      onChange={() => toggleOne(s.id)}
+                      className="cursor-pointer"
+                    />
+                  </td>
+                )}
                 <td className="px-4 py-3 font-medium text-gray-800">{s.fullName}</td>
                 <td className="px-4 py-3 text-gray-500">{s.phone}</td>
                 <td className="px-4 py-3 text-gray-500">{s.parentPhone}</td>
@@ -158,7 +233,7 @@ export default function StudentsPage() {
             ))}
             {students.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={isAdmin ? 7 : 6} className="px-4 py-8 text-center text-gray-400">
                   Chưa có học sinh nào
                 </td>
               </tr>
