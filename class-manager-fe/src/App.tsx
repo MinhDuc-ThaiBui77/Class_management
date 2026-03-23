@@ -8,6 +8,7 @@ import TeachersPage from './pages/TeachersPage'
 import AttendancePage from './pages/AttendancePage'
 import PaymentsPage from './pages/PaymentsPage'
 import AccountsPage from './pages/AccountsPage'
+import ReportPage from './pages/ReportPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth()
@@ -31,6 +32,7 @@ function AppRoutes() {
         <Route path="classes"    element={<ClassesPage />} />
         <Route path="attendance" element={<AttendancePage />} />
         <Route path="payments"   element={<PaymentsPage />} />
+        <Route path="reports"    element={<AdminRoute><ReportPage /></AdminRoute>} />
         <Route path="accounts"   element={<AdminRoute><AccountsPage /></AdminRoute>} />
       </Route>
     </Routes>

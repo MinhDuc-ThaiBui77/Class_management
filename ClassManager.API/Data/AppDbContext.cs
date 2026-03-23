@@ -15,6 +15,7 @@ namespace ClassManager.API.Data
         public DbSet<Session> Sessions => Set<Session>();
         public DbSet<Attendance> Attendances => Set<Attendance>();
         public DbSet<Payment> Payments => Set<Payment>();
+        public DbSet<Expense> Expenses => Set<Expense>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -41,6 +42,14 @@ namespace ClassManager.API.Data
             // Decimal precision cho Amount
             modelBuilder.Entity<Payment>()
                 .Property(p => p.Amount)
+                .HasPrecision(12, 2);
+
+            modelBuilder.Entity<Expense>()
+                .Property(e => e.Amount)
+                .HasPrecision(12, 2);
+
+            modelBuilder.Entity<Teacher>()
+                .Property(t => t.SalaryPerSession)
                 .HasPrecision(12, 2);
         }
     }
