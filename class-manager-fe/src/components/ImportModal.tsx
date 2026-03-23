@@ -6,8 +6,6 @@ interface PreviewRow {
   fullName: string
   address: string
   parentPhone: string
-  dateOfBirth: string
-  notes: string
   error?: string
 }
 
@@ -78,8 +76,6 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
         fullName:    r[0]?.toString().trim() ?? '',
         address:     r[1]?.toString().trim() ?? '',
         parentPhone: r[2]?.toString().trim() ?? '',
-        dateOfBirth: r[3]?.toString().trim() ?? '',
-        notes:       r[4]?.toString().trim() ?? '',
         error:       !r[0]?.toString().trim() ? 'Thiếu họ tên' : undefined,
       }))
       setPreview(parsed)
@@ -229,8 +225,6 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
                         <th className="px-3 py-2 text-left">Họ tên</th>
                         <th className="px-3 py-2 text-left">Địa chỉ</th>
                         <th className="px-3 py-2 text-left">SĐT PH</th>
-                        <th className="px-3 py-2 text-left">Ngày sinh</th>
-                        <th className="px-3 py-2 text-left">Ghi chú</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
@@ -243,8 +237,6 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
                           </td>
                           <td className="px-3 py-1.5 text-gray-500">{row.address || '—'}</td>
                           <td className="px-3 py-1.5 text-gray-500">{row.parentPhone || '—'}</td>
-                          <td className="px-3 py-1.5 text-gray-500">{row.dateOfBirth || '—'}</td>
-                          <td className="px-3 py-1.5 text-gray-500 max-w-[150px] truncate">{row.notes || '—'}</td>
                         </tr>
                       ))}
                     </tbody>

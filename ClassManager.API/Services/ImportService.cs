@@ -18,7 +18,7 @@ namespace ClassManager.API.Services
             var ws = wb.AddWorksheet("Học sinh");
 
             // Header
-            var headers = new[] { "Họ tên *", "Địa chỉ", "SĐT phụ huynh", "Ngày sinh (yyyy-mm-dd)", "Ghi chú" };
+            var headers = new[] { "Họ tên *", "Địa chỉ", "SĐT phụ huynh" };
             for (int i = 0; i < headers.Length; i++)
             {
                 ws.Cell(1, i + 1).Value = headers[i];
@@ -30,8 +30,6 @@ namespace ClassManager.API.Services
             ws.Cell(2, 1).Value = "Nguyễn Văn A";
             ws.Cell(2, 2).Value = "123 Lê Lợi, Q1, TP.HCM";
             ws.Cell(2, 3).Value = "0987654321";
-            ws.Cell(2, 4).Value = "2010-05-20";
-            ws.Cell(2, 5).Value = "Học sinh giỏi";
 
             ws.Columns().AdjustToContents();
 
@@ -72,14 +70,10 @@ namespace ClassManager.API.Services
 
                 var student = new Student
                 {
-                    FullName    = row.FullName.Trim(),
-                    Address     = row.Address?.Trim() ?? "",
-                    ParentPhone = row.ParentPhone?.Trim() ?? "",
-                    DateOfBirth = row.DateOfBirth.HasValue
-                        ? DateTime.SpecifyKind(row.DateOfBirth.Value, DateTimeKind.Utc)
-                        : null,
+                    FullName     = row.FullName.Trim(),
+                    Address      = row.Address?.Trim() ?? "",
+                    ParentPhone  = row.ParentPhone?.Trim() ?? "",
                     EnrolledDate = DateTime.UtcNow,
-                    Notes        = row.Notes?.Trim() ?? "",
                 };
 
                 _db.Students.Add(student);
@@ -122,10 +116,10 @@ namespace ClassManager.API.Services
         }
 
         // ── Parse Excel rows ──────────────────────────────────────────
-        private static List<(string? FullName, string? Address, string? ParentPhone, DateTime? DateOfBirth, string? Notes)>
+        private static List<(string? FullName, string? Address, string? ParentPhone)>
             ParseRows(Stream stream)
         {
-            var result = new List<(string?, string?, string?, DateTime?, string?)>();
+            var result = new List<(string?, string?, string?)>();
             using var wb = new XLWorkbook(stream);
             var ws = wb.Worksheet(1);
             var lastRow = ws.LastRowUsed()?.RowNumber() ?? 1;
@@ -135,12 +129,6 @@ namespace ClassManager.API.Services
                 var fullName    = ws.Cell(r, 1).GetString().Trim();
                 var address     = ws.Cell(r, 2).GetString().Trim();
                 var parentPhone = ws.Cell(r, 3).GetString().Trim();
-                var dobStr      = ws.Cell(r, 4).GetString().Trim();
-                var notes       = ws.Cell(r, 5).GetString().Trim();
-
-                DateTime? dob = null;
-                if (!string.IsNullOrEmpty(dobStr) && DateTime.TryParse(dobStr, out var parsed))
-                    dob = parsed;
 
                 if (string.IsNullOrEmpty(fullName) && string.IsNullOrEmpty(address))
                     continue; // bỏ qua hàng trống
@@ -148,9 +136,7 @@ namespace ClassManager.API.Services
                 result.Add((
                     string.IsNullOrEmpty(fullName) ? null : fullName,
                     string.IsNullOrEmpty(address) ? null : address,
-                    string.IsNullOrEmpty(parentPhone) ? null : parentPhone,
-                    dob,
-                    string.IsNullOrEmpty(notes) ? null : notes
+                    string.IsNullOrEmpty(parentPhone) ? null : parentPhone
                 ));
             }
             return result;
