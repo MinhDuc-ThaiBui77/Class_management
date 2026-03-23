@@ -77,9 +77,9 @@ export default function AccountsPage() {
         payload.teacherSubject = createForm.teacherSubject
         if (createForm.teacherPhone) payload.teacherPhone = createForm.teacherPhone
       }
-      await usersApi.create(payload)
+      const res = await usersApi.create(payload)
       setShowCreate(false)
-      loadAccounts()
+      setAccounts(prev => [...prev, res.data].sort((a, b) => a.fullName.localeCompare(b.fullName)))
     } catch (err: any) {
       setCreateError(err.response?.data?.message ?? 'Có lỗi xảy ra.')
     } finally {
@@ -105,9 +105,9 @@ export default function AccountsPage() {
         payload.teacherSubject = editForm.teacherSubject
         if (editForm.teacherPhone) payload.teacherPhone = editForm.teacherPhone
       }
-      await usersApi.update(editTarget.id, payload)
+      const res = await usersApi.update(editTarget.id, payload)
       setEditTarget(null)
-      loadAccounts()
+      setAccounts(prev => prev.map(a => a.id === editTarget.id ? res.data : a))
     } catch (err: any) {
       setEditError(err.response?.data?.message ?? 'Có lỗi xảy ra.')
     } finally {
@@ -138,7 +138,7 @@ export default function AccountsPage() {
     if (!confirm(`Xóa vĩnh viễn tài khoản "${u.fullName}" (${u.email})?\nHành động này không thể hoàn tác.`)) return
     try {
       await usersApi.delete(u.id)
-      loadAccounts()
+      setAccounts(prev => prev.filter(a => a.id !== u.id))
     } catch (err: any) {
       alert(err.response?.data?.message ?? 'Có lỗi xảy ra.')
     }
@@ -149,8 +149,8 @@ export default function AccountsPage() {
     const action = u.isActive ? 'vô hiệu hóa' : 'kích hoạt'
     if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} tài khoản "${u.fullName}"?`)) return
     try {
-      await usersApi.toggleActive(u.id)
-      loadAccounts()
+      const res = await usersApi.toggleActive(u.id)
+      setAccounts(prev => prev.map(a => a.id === u.id ? res.data : a))
     } catch (err: any) {
       alert(err.response?.data?.message ?? 'Có lỗi xảy ra.')
     }
