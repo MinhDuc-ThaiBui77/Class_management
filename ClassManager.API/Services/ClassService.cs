@@ -36,7 +36,7 @@ namespace ClassManager.API.Services
 
         public async Task<ClassResponse> CreateAsync(ClassRequest req)
         {
-            Validate(req);
+            await ValidateAsync(req);
             var cls = new Class
             {
                 Name      = req.Name.Trim(),
@@ -55,7 +55,7 @@ namespace ClassManager.API.Services
 
         public async Task<ClassResponse?> UpdateAsync(int id, ClassRequest req)
         {
-            Validate(req);
+            await ValidateAsync(req);
             var cls = await _db.Classes.Include(c => c.StudentClasses).Include(c => c.Teacher).FirstOrDefaultAsync(c => c.Id == id);
             if (cls == null) return null;
             cls.Name      = req.Name.Trim();
@@ -112,12 +112,23 @@ namespace ClassManager.API.Services
             return true;
         }
 
-        private static void Validate(ClassRequest req)
+        private async Task ValidateAsync(ClassRequest req)
         {
             if (string.IsNullOrWhiteSpace(req.Name))
                 throw new InvalidOperationException("Tên lớp không được để trống.");
             if (string.IsNullOrWhiteSpace(req.Subject))
                 throw new InvalidOperationException("Môn học không được để trống.");
+            if (!SubjectList.Valid.Contains(req.Subject))
+                throw new InvalidOperationException($"Môn học không hợp lệ.");
+            if (req.TeacherId.HasValue)
+            {
+                var teacher = await _db.Teachers.FindAsync(req.TeacherId.Value);
+                if (teacher == null || !teacher.IsActive)
+                    throw new InvalidOperationException("Giáo viên không tồn tại.");
+                if (teacher.Subject != req.Subject)
+                    throw new InvalidOperationException(
+                        $"Giáo viên \"{teacher.FullName}\" dạy môn {teacher.Subject}, không thể đứng lớp môn {req.Subject}.");
+            }
         }
     }
 }
