@@ -7,6 +7,7 @@ const navItems = [
   { to: '/classes',    label: 'Lớp học',    adminOnly: false },
   { to: '/attendance', label: 'Điểm danh',  adminOnly: false },
   { to: '/payments',   label: 'Học phí',    adminOnly: false },
+  { to: '/reports',    label: 'Báo cáo',    adminOnly: true  },
   { to: '/accounts',   label: 'Tài khoản',  adminOnly: true  },
 ]
 

@@ -2,9 +2,9 @@ namespace ClassManager.API.Models.DTOs
 {
     // ── Teacher ──────────────────────────────────────────────────────
 
-    public record TeacherRequest(string FullName, string Phone, string Email, string Subject, int? UserId, string Notes = "");
+    public record TeacherRequest(string FullName, string Phone, string Email, string Subject, int? UserId, string Notes = "", decimal? SalaryPerSession = null);
 
-    public record TeacherResponse(int Id, string FullName, string Phone, string Email, string Subject, string Notes, int ClassCount, int? UserId, string? UserEmail);
+    public record TeacherResponse(int Id, string FullName, string Phone, string Email, string Subject, string Notes, int ClassCount, int? UserId, string? UserEmail, decimal? SalaryPerSession = null);
 
     // ── Class ────────────────────────────────────────────────────────
 
@@ -104,4 +104,30 @@ namespace ClassManager.API.Models.DTOs
         decimal TotalCollected,
         int UnpaidCount
     );
+
+    // ── Expense ─────────────────────────────────────────────────────
+
+    public record ExpenseRequest(string Title, decimal Amount, DateTime ExpenseDate, bool IsRecurring = false, string Notes = "");
+
+    public record ExpenseResponse(int Id, string Title, decimal Amount, DateTime ExpenseDate, bool IsRecurring, string Notes);
+
+    // ── Report ──────────────────────────────────────────────────────
+
+    public record TeacherCostItem(int TeacherId, string TeacherName, string Subject, int SessionCount, decimal SalaryPerSession, decimal Total);
+
+    public record ReportSummary(
+        decimal Revenue,
+        decimal ExpectedRevenue,
+        decimal TeacherCost,
+        decimal ExpenseCost,
+        decimal TotalCost,
+        decimal Profit,
+        int TotalStudents,
+        int PaidStudents,
+        decimal CollectionRate,
+        List<TeacherCostItem> TeacherBreakdown,
+        List<ExpenseResponse> ExpenseBreakdown
+    );
+
+    public record MonthlyReportItem(int Month, int Year, decimal Revenue, decimal TotalCost, decimal Profit);
 }

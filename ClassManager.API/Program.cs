@@ -21,6 +21,8 @@ builder.Services.AddScoped<StudentService>();
 builder.Services.AddScoped<ClassService>();
 builder.Services.AddScoped<AttendanceService>();
 builder.Services.AddScoped<PaymentService>();
+builder.Services.AddScoped<ExpenseService>();
+builder.Services.AddScoped<ReportService>();
 
 // ── JWT Authentication ────────────────────────────────────────────
 var jwtKey = builder.Configuration["Jwt:Key"]!;
@@ -88,6 +90,28 @@ using (var scope = app.Services.CreateScope())
                 WHERE table_name = 'Classes' AND column_name = 'TuitionFee'
             ) THEN
                 ALTER TABLE "Classes" ADD COLUMN "TuitionFee" numeric(12,2);
+            END IF;
+            -- Thêm SalaryPerSession vào Teachers (nếu chưa có)
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Teachers' AND column_name = 'SalaryPerSession'
+            ) THEN
+                ALTER TABLE "Teachers" ADD COLUMN "SalaryPerSession" numeric(12,2);
+            END IF;
+            -- Tạo bảng Expenses (nếu chưa có)
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'Expenses'
+            ) THEN
+                CREATE TABLE "Expenses" (
+                    "Id" SERIAL PRIMARY KEY,
+                    "Title" text NOT NULL DEFAULT '',
+                    "Amount" numeric(12,2) NOT NULL DEFAULT 0,
+                    "ExpenseDate" timestamp with time zone NOT NULL,
+                    "IsRecurring" boolean NOT NULL DEFAULT false,
+                    "Notes" text NOT NULL DEFAULT '',
+                    "CreatedAt" timestamp with time zone NOT NULL DEFAULT now()
+                );
             END IF;
         END $$;
         """);

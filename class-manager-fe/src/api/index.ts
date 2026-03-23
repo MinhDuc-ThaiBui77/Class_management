@@ -121,4 +121,23 @@ export const paymentsApi = {
     api.delete(`/payments/${id}`),
 }
 
+// ── Expenses ─────────────────────────────────────────────────────
+export const expensesApi = {
+  getAll: (month?: number, year?: number) =>
+    api.get('/expenses', { params: { month, year } }),
+  create: (data: object) => api.post('/expenses', data),
+  update: (id: number, data: object) => api.put(`/expenses/${id}`, data),
+  delete: (id: number) => api.delete(`/expenses/${id}`),
+}
+
+// ── Reports ──────────────────────────────────────────────────────
+export const reportsApi = {
+  summary: (period: string, year: number, month?: number, quarter?: number) =>
+    api.get('/reports/summary', { params: { period, year, month, quarter } }),
+  chart: (year: number) =>
+    api.get('/reports/chart', { params: { year } }),
+  export: (period: string, year: number, month?: number, quarter?: number) =>
+    api.get('/reports/export', { params: { period, year, month, quarter }, responseType: 'blob' }),
+}
+
 export default api
