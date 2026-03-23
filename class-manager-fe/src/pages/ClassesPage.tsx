@@ -22,16 +22,30 @@ interface Teacher {
 interface ClassStudent {
   studentId: number
   fullName: string
-  phone: string
+  address: string
 }
 
 interface Student {
   id: number
   fullName: string
-  phone: string
+  parentPhone: string
 }
 
-const emptyForm = { name: '', subject: '', teacherId: '' as string | number, notes: '' }
+const SUBJECTS = [
+  'Toán', 'Văn', 'Tiếng Anh', 'Lý', 'Hoá',
+  'Luyện viết TH 1', 'Luyện viết TH 2', 'Luyện viết TH 3', 'Luyện viết TH 4', 'Luyện viết TH 5',
+]
+const KHOI = Array.from({ length: 12 }, (_, i) => String(i + 1))
+const NHOM = ['A', 'B', 'C', 'D', 'E', 'F']
+const SO   = ['1', '2', '3', '4', '5']
+
+function parseName(name: string) {
+  const m = name.match(/^(\d+)([A-F])(\d*)$/)
+  if (m) return { khoi: m[1], nhom: m[2], so: m[3] || '1' }
+  return { khoi: '', nhom: 'A', so: '1' }
+}
+
+const emptyForm = { khoi: '', nhom: 'A', so: '1', subject: '', teacherId: '' as string | number, notes: '' }
 
 export default function ClassesPage() {
   const { isAdmin } = useAuth()
@@ -80,7 +94,8 @@ export default function ClassesPage() {
 
   const openEdit = (cls: Class) => {
     setEditing(cls)
-    setForm({ name: cls.name, subject: cls.subject, teacherId: cls.teacherId ?? '', notes: cls.notes })
+    const parsed = parseName(cls.name)
+    setForm({ ...parsed, subject: cls.subject, teacherId: cls.teacherId ?? '', notes: cls.notes })
     setError('')
     setShowForm(true)
   }
@@ -90,7 +105,13 @@ export default function ClassesPage() {
     setError('')
     setLoading(true)
     try {
-      const payload = { ...form, teacherId: form.teacherId === '' ? null : Number(form.teacherId) }
+      const name = `${form.khoi}${form.nhom}${form.so}`
+      const payload = {
+        name,
+        subject: form.subject,
+        teacherId: form.teacherId === '' ? null : Number(form.teacherId),
+        notes: form.notes,
+      }
       if (editing) {
         await classesApi.update(editing.id, payload)
       } else {
@@ -99,7 +120,7 @@ export default function ClassesPage() {
       setShowForm(false)
       loadClasses()
       if (selected && editing?.id === selected.id) {
-        setSelected(prev => prev ? { ...prev, ...form, teacherId: form.teacherId === '' ? null : Number(form.teacherId) } : null)
+        setSelected(prev => prev ? { ...prev, name, subject: form.subject, teacherId: payload.teacherId } : null)
       }
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Có lỗi xảy ra.')
@@ -231,7 +252,7 @@ export default function ClassesPage() {
                     <div key={s.studentId} className="flex items-center justify-between px-4 py-2.5">
                       <div>
                         <p className="text-sm font-medium text-gray-800">{s.fullName}</p>
-                        <p className="text-xs text-gray-400">{s.phone}</p>
+                        <p className="text-xs text-gray-400">{s.address}</p>
                       </div>
                       {isAdmin && (
                         <button
@@ -260,7 +281,7 @@ export default function ClassesPage() {
                     <div key={s.id} className="flex items-center justify-between px-4 py-2.5">
                       <div>
                         <p className="text-sm font-medium text-gray-800">{s.fullName}</p>
-                        <p className="text-xs text-gray-400">{s.phone}</p>
+                        <p className="text-xs text-gray-400">{s.parentPhone}</p>
                       </div>
                       <button
                         onClick={() => handleEnroll(s.id)}
@@ -290,25 +311,46 @@ export default function ClassesPage() {
             <form onSubmit={handleSave} className="space-y-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Tên lớp *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="VD: 9A, 8B..."
-                  value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <div className="flex gap-2">
+                  <select
+                    required
+                    value={form.khoi}
+                    onChange={e => setForm(f => ({ ...f, khoi: e.target.value }))}
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Khối</option>
+                    {KHOI.map(k => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                  <select
+                    value={form.nhom}
+                    onChange={e => setForm(f => ({ ...f, nhom: e.target.value }))}
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {NHOM.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <select
+                    value={form.so}
+                    onChange={e => setForm(f => ({ ...f, so: e.target.value }))}
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {SO.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                {form.khoi && (
+                  <p className="text-xs text-blue-600 mt-1">Tên lớp: <strong>{form.khoi}{form.nhom}{form.so}</strong></p>
+                )}
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Môn học *</label>
-                <input
-                  type="text"
+                <select
                   required
-                  placeholder="VD: Toán, Văn, Anh..."
                   value={form.subject}
                   onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                >
+                  <option value="">-- Chọn môn học --</option>
+                  {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Giáo viên đứng lớp</label>

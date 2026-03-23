@@ -13,7 +13,10 @@ interface UserAccount {
   teacherName: string | null
 }
 
-const SUBJECTS = ['Toán', 'Văn', 'Tiếng Anh']
+const SUBJECTS = [
+  'Toán', 'Văn', 'Tiếng Anh', 'Lý', 'Hoá',
+  'Luyện viết TH 1', 'Luyện viết TH 2', 'Luyện viết TH 3', 'Luyện viết TH 4', 'Luyện viết TH 5',
+]
 
 const emptyCreateForm = {
   fullName: '', email: '', password: '', role: 'teacher',

@@ -12,7 +12,7 @@ namespace ClassManager.API.Models.DTOs
 
     public record ClassResponse(int Id, string Name, string Subject, string Notes, int StudentCount, int? TeacherId, string? TeacherName, DateTime? StartDate = null);
 
-    public record ClassStudentItem(int StudentId, string FullName, string Phone, DateTime EnrolledDate);
+    public record ClassStudentItem(int StudentId, string FullName, string Address, DateTime EnrolledDate);
 
     public record EnrollRequest(int StudentId);
 
