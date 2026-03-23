@@ -43,10 +43,8 @@ namespace ClassManager.API.Controllers
                 var c = await _svc.CreateAsync(req);
                 return CreatedAtAction(nameof(GetById), new { id = c.Id }, c);
             }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
+            catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+            catch (Exception ex)                 { return BadRequest(new { message = ex.Message }); }
         }
 
         [HttpPut("{id}")]
@@ -58,10 +56,8 @@ namespace ClassManager.API.Controllers
                 var c = await _svc.UpdateAsync(id, req);
                 return c == null ? NotFound() : Ok(c);
             }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
+            catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+            catch (Exception ex)                 { return BadRequest(new { message = ex.Message }); }
         }
 
         [HttpDelete("{id}")]

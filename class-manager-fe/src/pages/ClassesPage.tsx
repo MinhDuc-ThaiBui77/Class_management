@@ -368,7 +368,7 @@ export default function ClassesPage() {
                       >
                         <option value="">-- Chưa phân công --</option>
                         {filtered.map(t => (
-                          <option key={t.id} value={t.id}>{t.fullName}</option>
+                          <option key={t.id} value={t.id}>{t.fullName} ({t.subject})</option>
                         ))}
                       </select>
                       {form.subject && filtered.length === 0 && (

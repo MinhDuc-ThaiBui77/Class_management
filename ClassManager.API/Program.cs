@@ -72,6 +72,15 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+app.UseExceptionHandler(errApp => errApp.Run(async ctx =>
+{
+    ctx.Response.StatusCode  = 500;
+    ctx.Response.ContentType = "application/json";
+    var feature = ctx.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+    var message = feature?.Error?.Message ?? "Đã xảy ra lỗi không xác định.";
+    await ctx.Response.WriteAsJsonAsync(new { message });
+}));
+
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
