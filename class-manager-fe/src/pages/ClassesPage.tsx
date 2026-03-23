@@ -345,7 +345,7 @@ export default function ClassesPage() {
                 <select
                   required
                   value={form.subject}
-                  onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
+                  onChange={e => setForm(f => ({ ...f, subject: e.target.value, teacherId: '' }))}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">-- Chọn môn học --</option>
@@ -354,14 +354,29 @@ export default function ClassesPage() {
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Giáo viên đứng lớp</label>
-                <select value={form.teacherId}
-                  onChange={e => setForm(f => ({ ...f, teacherId: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">-- Chưa phân công --</option>
-                  {teachers.map(t => (
-                    <option key={t.id} value={t.id}>{t.fullName} ({t.subject})</option>
-                  ))}
-                </select>
+                {(() => {
+                  const filtered = form.subject
+                    ? teachers.filter(t => t.subject === form.subject)
+                    : teachers
+                  return (
+                    <>
+                      <select
+                        value={form.teacherId}
+                        onChange={e => setForm(f => ({ ...f, teacherId: e.target.value }))}
+                        disabled={!form.subject}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                      >
+                        <option value="">-- Chưa phân công --</option>
+                        {filtered.map(t => (
+                          <option key={t.id} value={t.id}>{t.fullName}</option>
+                        ))}
+                      </select>
+                      {form.subject && filtered.length === 0 && (
+                        <p className="text-xs text-orange-500 mt-1">Chưa có giáo viên dạy môn {form.subject}</p>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Ghi chú</label>
