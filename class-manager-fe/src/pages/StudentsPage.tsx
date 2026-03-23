@@ -3,19 +3,30 @@ import { studentsApi } from '../api'
 import { useAuth } from '../hooks/useAuth'
 import ImportModal from '../components/ImportModal'
 
+interface StudentClass {
+  className: string
+  subject: string
+  teacherName: string | null
+}
+
 interface Student {
   id: number
   fullName: string
-  phone: string
+  address: string
   parentPhone: string
   enrolledDate: string
   notes: string
+  classCount: number
+  classes: StudentClass[]
 }
 
 const emptyForm = {
-  fullName: '', phone: '', parentPhone: '',
+  fullName: '', address: '', parentPhone: '',
   dateOfBirth: '', enrolledDate: '', notes: ''
 }
+
+type SortKey = 'fullName' | 'address' | 'classCount' | 'enrolledDate'
+type SortDir = 'asc' | 'desc'
 
 export default function StudentsPage() {
   const { isAdmin } = useAuth()
@@ -29,6 +40,9 @@ export default function StudentsPage() {
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [sortKey, setSortKey] = useState<SortKey>('fullName')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [tooltip, setTooltip] = useState<number | null>(null)
 
   useEffect(() => { loadStudents() }, [])
 
@@ -54,7 +68,7 @@ export default function StudentsPage() {
     setEditing(s)
     setForm({
       fullName: s.fullName,
-      phone: s.phone,
+      address: s.address,
       parentPhone: s.parentPhone,
       dateOfBirth: '',
       enrolledDate: s.enrolledDate?.slice(0, 10) ?? '',
@@ -94,15 +108,37 @@ export default function StudentsPage() {
     loadStudents(search)
   }
 
-  const allSelected = students.length > 0 && students.every(s => selected.has(s.id))
-  const someSelected = students.some(s => selected.has(s.id))
+  // ── Sort ──────────────────────────────────────────────────────────
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  const sortedStudents = [...students].sort((a, b) => {
+    let cmp = 0
+    if (sortKey === 'fullName') cmp = a.fullName.localeCompare(b.fullName, 'vi')
+    else if (sortKey === 'address') cmp = a.address.localeCompare(b.address, 'vi')
+    else if (sortKey === 'classCount') cmp = a.classCount - b.classCount
+    else if (sortKey === 'enrolledDate') cmp = new Date(a.enrolledDate).getTime() - new Date(b.enrolledDate).getTime()
+    return sortDir === 'asc' ? cmp : -cmp
+  })
+
+  const SortIcon = ({ col }: { col: SortKey }) => {
+    if (sortKey !== col) return <span className="ml-1 text-gray-300">↕</span>
+    return <span className="ml-1 text-blue-500">{sortDir === 'asc' ? '↑' : '↓'}</span>
+  }
+
+  // ── Bulk select ───────────────────────────────────────────────────
+  const allSelected = sortedStudents.length > 0 && sortedStudents.every(s => selected.has(s.id))
+  const someSelected = sortedStudents.some(s => selected.has(s.id))
 
   const toggleAll = () => {
-    if (allSelected) {
-      setSelected(new Set())
-    } else {
-      setSelected(new Set(students.map(s => s.id)))
-    }
+    if (allSelected) setSelected(new Set())
+    else setSelected(new Set(sortedStudents.map(s => s.id)))
   }
 
   const toggleOne = (id: number) => {
@@ -153,7 +189,7 @@ export default function StudentsPage() {
       {/* Search */}
       <input
         type="text"
-        placeholder="Tìm theo tên, số điện thoại..."
+        placeholder="Tìm theo tên, địa chỉ, SĐT phụ huynh..."
         value={search}
         onChange={handleSearch}
         className="w-full max-w-sm border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -195,16 +231,25 @@ export default function StudentsPage() {
                   />
                 </th>
               )}
-              <th className="px-4 py-3 text-left">Họ tên</th>
-              <th className="px-4 py-3 text-left">Điện thoại</th>
-              <th className="px-4 py-3 text-left">ĐT phụ huynh</th>
-              <th className="px-4 py-3 text-left">Ngày nhập học</th>
+              <th className="px-4 py-3 text-left w-10">STT</th>
+              <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => handleSort('fullName')}>
+                Họ tên <SortIcon col="fullName" />
+              </th>
+              <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => handleSort('address')}>
+                Địa chỉ <SortIcon col="address" />
+              </th>
+              <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => handleSort('classCount')}>
+                Lớp đang học <SortIcon col="classCount" />
+              </th>
+              <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => handleSort('enrolledDate')}>
+                Ngày nhập học <SortIcon col="enrolledDate" />
+              </th>
               <th className="px-4 py-3 text-left">Ghi chú</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {students.map(s => (
+            {sortedStudents.map((s, idx) => (
               <tr key={s.id} className={`hover:bg-gray-50 transition ${selected.has(s.id) ? 'bg-blue-50' : ''}`}>
                 {isAdmin && (
                   <td className="px-4 py-3">
@@ -216,9 +261,38 @@ export default function StudentsPage() {
                     />
                   </td>
                 )}
+                <td className="px-4 py-3 text-gray-400 text-xs">{idx + 1}</td>
                 <td className="px-4 py-3 font-medium text-gray-800">{s.fullName}</td>
-                <td className="px-4 py-3 text-gray-500">{s.phone}</td>
-                <td className="px-4 py-3 text-gray-500">{s.parentPhone}</td>
+                <td className="px-4 py-3 text-gray-500 max-w-[180px] truncate">{s.address || '—'}</td>
+                <td className="px-4 py-3">
+                  {s.classCount === 0 ? (
+                    <span className="text-gray-300 text-xs">Chưa có lớp</span>
+                  ) : (
+                    <div className="relative inline-block">
+                      <button
+                        onMouseEnter={() => setTooltip(s.id)}
+                        onMouseLeave={() => setTooltip(null)}
+                        className="text-blue-600 text-xs font-medium hover:underline"
+                      >
+                        {s.classCount} lớp
+                      </button>
+                      {tooltip === s.id && (
+                        <div className="absolute z-20 left-0 top-6 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-[200px]">
+                          {s.classes.map((c, i) => (
+                            <div key={i} className="text-xs text-gray-700 py-1 border-b border-gray-50 last:border-0">
+                              <span className="font-medium">{c.className}</span>
+                              <span className="text-gray-400 mx-1">·</span>
+                              <span>{c.subject}</span>
+                              {c.teacherName && (
+                                <div className="text-gray-400">{c.teacherName}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-gray-500">
                   {s.enrolledDate ? new Date(s.enrolledDate).toLocaleDateString('vi-VN') : ''}
                 </td>
@@ -231,9 +305,9 @@ export default function StudentsPage() {
                 </td>
               </tr>
             ))}
-            {students.length === 0 && (
+            {sortedStudents.length === 0 && (
               <tr>
-                <td colSpan={isAdmin ? 7 : 6} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={isAdmin ? 8 : 7} className="px-4 py-8 text-center text-gray-400">
                   Chưa có học sinh nào
                 </td>
               </tr>
@@ -252,8 +326,8 @@ export default function StudentsPage() {
             <form onSubmit={handleSave} className="space-y-3">
               {[
                 { label: 'Họ tên *', key: 'fullName', type: 'text', required: true },
-                { label: 'Điện thoại', key: 'phone', type: 'tel', required: false },
-                { label: 'ĐT phụ huynh', key: 'parentPhone', type: 'tel', required: false },
+                { label: 'Địa chỉ', key: 'address', type: 'text', required: false },
+                { label: 'SĐT phụ huynh', key: 'parentPhone', type: 'tel', required: false },
                 { label: 'Ngày sinh', key: 'dateOfBirth', type: 'date', required: false },
                 { label: 'Ngày nhập học', key: 'enrolledDate', type: 'date', required: false },
               ].map(field => (

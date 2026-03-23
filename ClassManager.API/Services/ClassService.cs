@@ -20,7 +20,8 @@ namespace ClassManager.API.Services
                 .Select(c => new ClassResponse(
                     c.Id, c.Name, c.Subject, c.Notes,
                     c.StudentClasses.Count(sc => sc.Student.IsActive),
-                    c.TeacherId, c.Teacher != null ? c.Teacher.FullName : null))
+                    c.TeacherId, c.Teacher != null ? c.Teacher.FullName : null,
+                    c.StartDate))
                 .ToListAsync();
         }
 
@@ -30,7 +31,7 @@ namespace ClassManager.API.Services
                 .Include(c => c.StudentClasses)
                 .Include(c => c.Teacher)
                 .FirstOrDefaultAsync(c => c.Id == id);
-            return c == null ? null : new ClassResponse(c.Id, c.Name, c.Subject, c.Notes, c.StudentClasses.Count(sc => sc.Student.IsActive), c.TeacherId, c.Teacher?.FullName);
+            return c == null ? null : new ClassResponse(c.Id, c.Name, c.Subject, c.Notes, c.StudentClasses.Count(sc => sc.Student.IsActive), c.TeacherId, c.Teacher?.FullName, c.StartDate);
         }
 
         public async Task<ClassResponse> CreateAsync(ClassRequest req)
@@ -42,13 +43,14 @@ namespace ClassManager.API.Services
                 Subject   = req.Subject.Trim(),
                 Notes     = req.Notes.Trim(),
                 TeacherId = req.TeacherId,
+                StartDate = req.StartDate.HasValue ? DateTime.SpecifyKind(req.StartDate.Value, DateTimeKind.Utc) : null,
             };
             _db.Classes.Add(cls);
             await _db.SaveChangesAsync();
             var teacherName = req.TeacherId.HasValue
                 ? (await _db.Teachers.FindAsync(req.TeacherId.Value))?.FullName
                 : null;
-            return new ClassResponse(cls.Id, cls.Name, cls.Subject, cls.Notes, 0, cls.TeacherId, teacherName);
+            return new ClassResponse(cls.Id, cls.Name, cls.Subject, cls.Notes, 0, cls.TeacherId, teacherName, cls.StartDate);
         }
 
         public async Task<ClassResponse?> UpdateAsync(int id, ClassRequest req)
@@ -60,11 +62,12 @@ namespace ClassManager.API.Services
             cls.Subject   = req.Subject.Trim();
             cls.Notes     = req.Notes.Trim();
             cls.TeacherId = req.TeacherId;
+            cls.StartDate = req.StartDate.HasValue ? DateTime.SpecifyKind(req.StartDate.Value, DateTimeKind.Utc) : cls.StartDate;
             await _db.SaveChangesAsync();
             var teacherName = req.TeacherId.HasValue
                 ? (await _db.Teachers.FindAsync(req.TeacherId.Value))?.FullName
                 : null;
-            return new ClassResponse(cls.Id, cls.Name, cls.Subject, cls.Notes, cls.StudentClasses.Count, cls.TeacherId, teacherName);
+            return new ClassResponse(cls.Id, cls.Name, cls.Subject, cls.Notes, cls.StudentClasses.Count, cls.TeacherId, teacherName, cls.StartDate);
         }
 
         public async Task<bool> DeleteAsync(int id)
@@ -82,7 +85,7 @@ namespace ClassManager.API.Services
                 .Where(sc => sc.ClassId == classId && sc.Student.IsActive)
                 .OrderBy(sc => sc.Student.FullName)
                 .Select(sc => new ClassStudentItem(
-                    sc.StudentId, sc.Student.FullName, sc.Student.Phone, sc.EnrolledDate))
+                    sc.StudentId, sc.Student.FullName, sc.Student.Address, sc.EnrolledDate))
                 .ToListAsync();
         }
 

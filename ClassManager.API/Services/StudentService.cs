@@ -27,18 +27,31 @@ namespace ClassManager.API.Services
             if (!string.IsNullOrWhiteSpace(search))
                 query = query.Where(s =>
                     s.FullName.Contains(search) ||
-                    s.Phone.Contains(search) ||
+                    s.Address.Contains(search) ||
                     s.ParentPhone.Contains(search));
 
             return await query
                 .OrderBy(s => s.FullName)
-                .Select(s => ToResponse(s))
+                .Select(s => new StudentResponse(
+                    s.Id, s.FullName, s.Address, s.ParentPhone,
+                    s.DateOfBirth, s.EnrolledDate, s.Notes, s.IsActive,
+                    s.StudentClasses.Count,
+                    s.StudentClasses.Select(sc => new StudentClassInfo(
+                        sc.Class.Name,
+                        sc.Class.Subject,
+                        sc.Class.Teacher != null ? sc.Class.Teacher.FullName : null
+                    )).ToList()
+                ))
                 .ToListAsync();
         }
 
         public async Task<StudentResponse?> GetByIdAsync(int id)
         {
-            var s = await _db.Students.FindAsync(id);
+            var s = await _db.Students
+                .Include(x => x.StudentClasses)
+                    .ThenInclude(sc => sc.Class)
+                        .ThenInclude(c => c.Teacher)
+                .FirstOrDefaultAsync(x => x.Id == id);
             return s == null ? null : ToResponse(s);
         }
 
@@ -48,7 +61,7 @@ namespace ClassManager.API.Services
             var student = new Student
             {
                 FullName     = req.FullName.Trim(),
-                Phone        = req.Phone.Trim(),
+                Address      = req.Address.Trim(),
                 ParentPhone  = req.ParentPhone.Trim(),
                 DateOfBirth  = req.DateOfBirth.HasValue ? DateTime.SpecifyKind(req.DateOfBirth.Value, DateTimeKind.Utc) : null,
                 EnrolledDate = req.EnrolledDate.HasValue ? DateTime.SpecifyKind(req.EnrolledDate.Value, DateTimeKind.Utc) : DateTime.UtcNow,
@@ -66,7 +79,7 @@ namespace ClassManager.API.Services
             if (student == null) return null;
 
             student.FullName    = req.FullName.Trim();
-            student.Phone       = req.Phone.Trim();
+            student.Address     = req.Address.Trim();
             student.ParentPhone = req.ParentPhone.Trim();
             student.DateOfBirth = req.DateOfBirth.HasValue ? DateTime.SpecifyKind(req.DateOfBirth.Value, DateTimeKind.Utc) : null;
             student.Notes       = req.Notes.Trim();
@@ -93,8 +106,14 @@ namespace ClassManager.API.Services
         }
 
         private static StudentResponse ToResponse(Student s) => new(
-            s.Id, s.FullName, s.Phone, s.ParentPhone,
-            s.DateOfBirth, s.EnrolledDate, s.Notes, s.IsActive
+            s.Id, s.FullName, s.Address, s.ParentPhone,
+            s.DateOfBirth, s.EnrolledDate, s.Notes, s.IsActive,
+            s.StudentClasses.Count,
+            s.StudentClasses.Select(sc => new StudentClassInfo(
+                sc.Class.Name,
+                sc.Class.Subject,
+                sc.Class.Teacher?.FullName
+            )).ToList()
         );
     }
 }
