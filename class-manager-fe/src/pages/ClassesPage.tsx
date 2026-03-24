@@ -77,16 +77,15 @@ export default function ClassesPage() {
     setClasses(res.data)
   }
 
+  // Load all students once on mount
+  useEffect(() => { studentsApi.getAll().then(r => setAllStudents(r.data)) }, [])
+
   const selectClass = async (cls: Class) => {
     setSelected(cls)
     setEnrollError('')
     setAddSearch('')
-    const [enrolledRes, allRes] = await Promise.all([
-      classesApi.getStudents(cls.id),
-      studentsApi.getAll(),
-    ])
+    const enrolledRes = await classesApi.getStudents(cls.id)
     setEnrolled(enrolledRes.data)
-    setAllStudents(allRes.data)
   }
 
   const openAdd = () => {
@@ -149,7 +148,8 @@ export default function ClassesPage() {
       await classesApi.enroll(selected.id, studentId)
       const res = await classesApi.getStudents(selected.id)
       setEnrolled(res.data)
-      loadClasses()
+      // Update student count locally
+      setClasses(prev => prev.map(c => c.id === selected.id ? { ...c, studentCount: res.data.length } : c))
     } catch (err: any) {
       setEnrollError(err.response?.data?.message ?? 'Lỗi thêm học sinh.')
     }
@@ -158,8 +158,11 @@ export default function ClassesPage() {
   const handleUnenroll = async (studentId: number) => {
     if (!selected) return
     await classesApi.unenroll(selected.id, studentId)
-    setEnrolled(prev => prev.filter(s => s.studentId !== studentId))
-    loadClasses()
+    setEnrolled(prev => {
+      const next = prev.filter(s => s.studentId !== studentId)
+      setClasses(cs => cs.map(c => c.id === selected.id ? { ...c, studentCount: next.length } : c))
+      return next
+    })
   }
 
   const enrolledIds = new Set(enrolled.map(s => s.studentId))
