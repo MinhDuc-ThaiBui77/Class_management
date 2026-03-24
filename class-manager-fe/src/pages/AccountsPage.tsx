@@ -184,7 +184,7 @@ export default function AccountsPage() {
       ? <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-full text-xs font-medium">Admin</span>
       : <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs font-medium">Giáo viên</span>
 
-  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
 
   return (
     <div>
@@ -202,7 +202,7 @@ export default function AccountsPage() {
           </button>
           <button
             onClick={() => { setCreateForm(emptyCreateForm); setCreateError(''); setShowCreate(true) }}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
           >
             + Tạo tài khoản
           </button>
@@ -330,7 +330,7 @@ export default function AccountsPage() {
               {createError && <p className="text-red-500 text-sm">{createError}</p>}
               <div className="flex gap-2 pt-1">
                 <button type="submit" disabled={createLoading}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50">
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50">
                   {createLoading ? 'Đang tạo...' : 'Tạo tài khoản'}
                 </button>
                 <button type="button" onClick={() => setShowCreate(false)}
@@ -392,7 +392,7 @@ export default function AccountsPage() {
               {editError && <p className="text-red-500 text-sm">{editError}</p>}
               <div className="flex gap-2 pt-1">
                 <button type="submit" disabled={editLoading}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50">
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50">
                   {editLoading ? 'Đang lưu...' : 'Lưu'}
                 </button>
                 <button type="button" onClick={() => setEditTarget(null)}
@@ -461,7 +461,7 @@ export default function AccountsPage() {
               {changePwError && <p className="text-red-500 text-sm">{changePwError}</p>}
               <div className="flex gap-2 pt-1">
                 <button type="submit" disabled={changePwLoading}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50">
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50">
                   {changePwLoading ? 'Đang lưu...' : 'Đổi mật khẩu'}
                 </button>
                 <button type="button" onClick={() => setShowChangePw(false)}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { paymentsApi } from '../api'
+import { paymentsApi, downloadBlob } from '../api'
 import { useAuth } from '../hooks/useAuth'
 
 interface PaymentStatusItem {
@@ -126,6 +126,13 @@ export default function PaymentsPage() {
             </p>
           )}
         </div>
+        <button onClick={async () => {
+          const selectedClassId = filterClass ? data?.items.find(i => i.hasClass && `${i.className} ${i.subject}` === filterClass)?.classId : undefined
+          const r = await paymentsApi.export(selectedClassId)
+          downloadBlob(r, selectedClassId ? `hoc-phi-lop.xlsx` : 'hoc-phi.xlsx')
+        }} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 transition">
+          {filterClass ? `Export "${filterClass}"` : 'Export Excel'}
+        </button>
       </div>
 
       {/* Filters */}
@@ -135,7 +142,7 @@ export default function PaymentsPage() {
           placeholder="Tìm học sinh..."
           value={filterName}
           onChange={e => setFilterName(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 w-48"
         />
         <select
           value={filterClass}
@@ -219,7 +226,7 @@ export default function PaymentsPage() {
                   {isAdmin && !s.isPaid && s.hasClass && (
                     <button
                       onClick={() => openRecord(s)}
-                      className="text-blue-500 hover:text-blue-700 text-xs font-medium"
+                      className="text-red-600 hover:text-red-700 text-xs font-medium"
                     >
                       Ghi nhận
                     </button>
@@ -295,7 +302,7 @@ export default function PaymentsPage() {
                   type="number"
                   value={amount}
                   onChange={e => setAmount(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   min="1000"
                   required
                 />
@@ -306,14 +313,14 @@ export default function PaymentsPage() {
                   type="text"
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
               </div>
               {error && <p className="text-red-500 text-sm">{error}</p>}
               <div className="flex gap-2 pt-1">
                 <button
                   type="submit"
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-sm font-medium transition"
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-sm font-medium transition"
                 >
                   Lưu
                 </button>

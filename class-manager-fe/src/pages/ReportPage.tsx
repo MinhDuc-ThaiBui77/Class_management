@@ -147,7 +147,7 @@ export default function ReportPage() {
               key={p}
               onClick={() => setPeriod(p)}
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
-                period === p ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                period === p ? 'bg-white text-red-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               {p === 'month' ? 'Tháng' : p === 'quarter' ? 'Quý' : 'Năm'}
@@ -209,7 +209,7 @@ export default function ReportPage() {
               return (
                 <div className="w-full bg-gray-100 rounded-full h-3 flex overflow-hidden">
                   <div
-                    className="bg-green-500 h-3 transition-all"
+                    className="bg-amber-400 h-3 transition-all"
                     style={{ width: `${(summary.paidEnrollments / total) * 100}%` }}
                   />
                   <div
@@ -225,7 +225,7 @@ export default function ReportPage() {
             })()}
             <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
               <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />
                 Đã đóng ({summary.paidEnrollments})
               </span>
               <span className="flex items-center gap-1">
@@ -249,8 +249,8 @@ export default function ReportPage() {
                 <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `${(v / 1000000).toFixed(1)}tr`} />
                 <Tooltip formatter={(v: number) => fmt(v)} />
                 <Legend />
-                <Bar dataKey="Doanh thu" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Lợi nhuận" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Doanh thu" fill="#DE2228" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Lợi nhuận" fill="#F6AB10" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -261,7 +261,7 @@ export default function ReportPage() {
               <button
                 onClick={() => setTab('teachers')}
                 className={`px-4 py-3 text-sm font-medium transition ${
-                  tab === 'teachers' ? 'text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'
+                  tab === 'teachers' ? 'text-red-700 border-b-2 border-red-600' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 Lương giáo viên ({summary.teacherBreakdown.length})
@@ -269,7 +269,7 @@ export default function ReportPage() {
               <button
                 onClick={() => setTab('expenses')}
                 className={`px-4 py-3 text-sm font-medium transition ${
-                  tab === 'expenses' ? 'text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'
+                  tab === 'expenses' ? 'text-red-700 border-b-2 border-red-600' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 Chi phí khác ({summary.expenseBreakdown.length})
@@ -383,7 +383,7 @@ export default function ReportPage() {
                   value={expenseForm.title}
                   onChange={e => setExpenseForm(f => ({ ...f, title: e.target.value }))}
                   placeholder="VD: Thuê phòng, Mua dụng cụ vệ sinh"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
               </div>
               <div>
@@ -395,7 +395,7 @@ export default function ReportPage() {
                   value={expenseForm.amount}
                   onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))}
                   placeholder="VD: 3000000"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
               </div>
               <div>
@@ -405,7 +405,7 @@ export default function ReportPage() {
                   type="date"
                   value={expenseForm.expenseDate}
                   onChange={e => setExpenseForm(f => ({ ...f, expenseDate: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
               </div>
               <div className="flex items-center gap-2">
@@ -423,12 +423,12 @@ export default function ReportPage() {
                 <input
                   value={expenseForm.notes}
                   onChange={e => setExpenseForm(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
               </div>
               {expenseError && <p className="text-red-500 text-sm">{expenseError}</p>}
               <div className="flex gap-2 pt-1">
-                <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-sm font-medium transition">Lưu</button>
+                <button type="submit" className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-sm font-medium transition">Lưu</button>
                 <button type="button" onClick={() => setShowExpenseForm(false)} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition">Hủy</button>
               </div>
             </form>
@@ -441,16 +441,16 @@ export default function ReportPage() {
 
 function Card({ label, value, color }: { label: string; value: string; color: string }) {
   const colors: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-700',
-    green: 'bg-green-50 text-green-700',
-    red: 'bg-red-50 text-red-700',
-    orange: 'bg-orange-50 text-orange-700',
-    gray: 'bg-gray-50 text-gray-700',
+    blue: 'bg-red-50 text-red-700 border-red-100',
+    green: 'bg-amber-50 text-amber-700 border-amber-100',
+    red: 'bg-red-50 text-red-700 border-red-100',
+    orange: 'bg-amber-50 text-amber-700 border-amber-100',
+    gray: 'bg-gray-50 text-gray-700 border-gray-100',
   }
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-4">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-lg font-semibold ${colors[color]?.split(' ')[1] ?? 'text-gray-800'}`}>{value}</p>
+    <div className={`rounded-xl border p-4 ${colors[color] ?? 'bg-white border-gray-100'}`}>
+      <p className="text-xs font-medium opacity-70 uppercase tracking-wide mb-1">{label}</p>
+      <p className="text-xl font-bold">{value}</p>
     </div>
   )
 }
