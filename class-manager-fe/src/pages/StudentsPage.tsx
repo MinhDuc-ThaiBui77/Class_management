@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { studentsApi, downloadBlob } from '../api'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../components/Toast'
@@ -53,11 +53,14 @@ export default function StudentsPage() {
     } finally { setLoading(false) }
   }
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearch(e.target.value)
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setSearch(val)
     setPage(1)
-    loadStudents(e.target.value)
-  }
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => loadStudents(val), 300)
+  }, [])
 
   const openAdd = () => { setEditing(null); setForm(emptyForm); setError(''); setShowForm(true) }
   const openEdit = (s: Student) => {

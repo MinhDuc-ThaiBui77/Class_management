@@ -173,6 +173,14 @@ using (var scope = app.Services.CreateScope())
                 CREATE UNIQUE INDEX "IX_Payments_StudentId_ClassId"
                     ON "Payments" ("StudentId", "ClassId");
             END IF;
+            -- Performance indexes
+            CREATE INDEX IF NOT EXISTS "IX_StudentClasses_StudentId" ON "StudentClasses" ("StudentId");
+            CREATE INDEX IF NOT EXISTS "IX_StudentClasses_ClassId" ON "StudentClasses" ("ClassId");
+            CREATE INDEX IF NOT EXISTS "IX_Sessions_ClassId" ON "Sessions" ("ClassId");
+            CREATE INDEX IF NOT EXISTS "IX_Sessions_SessionDate" ON "Sessions" ("SessionDate");
+            CREATE INDEX IF NOT EXISTS "IX_Attendances_SessionId" ON "Attendances" ("SessionId");
+            CREATE INDEX IF NOT EXISTS "IX_Payments_ClassId" ON "Payments" ("ClassId");
+            CREATE INDEX IF NOT EXISTS "IX_Payments_PaidDate" ON "Payments" ("PaidDate");
         END $$;
         """);
 

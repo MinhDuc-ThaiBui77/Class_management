@@ -2,14 +2,25 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { ToastProvider } from './components/Toast'
 import Layout from './components/Layout'
+import { lazy, Suspense } from 'react'
+
+// Eager load: pages users see first
 import LoginPage from './pages/LoginPage'
 import StudentsPage from './pages/StudentsPage'
-import ClassesPage from './pages/ClassesPage'
-import TeachersPage from './pages/TeachersPage'
-import AttendancePage from './pages/AttendancePage'
-import PaymentsPage from './pages/PaymentsPage'
-import AccountsPage from './pages/AccountsPage'
-import ReportPage from './pages/ReportPage'
+
+// Lazy load: less frequently accessed pages
+const TeachersPage = lazy(() => import('./pages/TeachersPage'))
+const ClassesPage = lazy(() => import('./pages/ClassesPage'))
+const AttendancePage = lazy(() => import('./pages/AttendancePage'))
+const PaymentsPage = lazy(() => import('./pages/PaymentsPage'))
+const AccountsPage = lazy(() => import('./pages/AccountsPage'))
+const ReportPage = lazy(() => import('./pages/ReportPage'))
+
+const PageLoader = () => (
+  <div className="flex items-center justify-center py-20">
+    <div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+  </div>
+)
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth()
@@ -24,19 +35,21 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   const { token } = useAuth()
   return (
-    <Routes>
-      <Route path="/login" element={token ? <Navigate to="/" replace /> : <LoginPage />} />
-      <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-        <Route index element={<Navigate to="/students" replace />} />
-        <Route path="students"   element={<StudentsPage />} />
-        <Route path="teachers"   element={<TeachersPage />} />
-        <Route path="classes"    element={<ClassesPage />} />
-        <Route path="attendance" element={<AttendancePage />} />
-        <Route path="payments"   element={<PaymentsPage />} />
-        <Route path="reports"    element={<AdminRoute><ReportPage /></AdminRoute>} />
-        <Route path="accounts"   element={<AdminRoute><AccountsPage /></AdminRoute>} />
-      </Route>
-    </Routes>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="/login" element={token ? <Navigate to="/" replace /> : <LoginPage />} />
+        <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
+          <Route index element={<Navigate to="/students" replace />} />
+          <Route path="students"   element={<StudentsPage />} />
+          <Route path="teachers"   element={<TeachersPage />} />
+          <Route path="classes"    element={<ClassesPage />} />
+          <Route path="attendance" element={<AttendancePage />} />
+          <Route path="payments"   element={<PaymentsPage />} />
+          <Route path="reports"    element={<AdminRoute><ReportPage /></AdminRoute>} />
+          <Route path="accounts"   element={<AdminRoute><AccountsPage /></AdminRoute>} />
+        </Route>
+      </Routes>
+    </Suspense>
   )
 }
 

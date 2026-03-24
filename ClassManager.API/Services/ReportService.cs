@@ -42,30 +42,25 @@ namespace ClassManager.API.Services
             var (startDate, endDate) = GetDateRange(period, year, month, quarter);
             var (sm, sy, em, ey) = GetMonthRange(period, year, month, quarter);
 
-            // Revenue: tất cả payment trong kỳ — KHÔNG lọc IsActive
-            // (tiền đã thu thì không mất khi xóa HS)
+            // Revenue (không lọc IsActive — tiền đã thu là đã thu)
             var validRevenue = await _db.Payments
-                .Where(p => p.ClassId > 0
-                         && p.PaidDate >= startDate && p.PaidDate <= endDate)
+                .Where(p => p.ClassId > 0 && p.PaidDate >= startDate && p.PaidDate <= endDate)
                 .SumAsync(p => (decimal?)p.Amount) ?? 0;
 
-            // Expected revenue: tổng TuitionFee cho enrollment active (metric hiện tại)
             var expectedRevenue = await _db.StudentClasses
                 .Where(sc => sc.Student.IsActive)
                 .SumAsync(sc => sc.Class.TuitionFee ?? 0);
 
-            // Teacher cost
+            // Teacher + expense cost
             var teacherBreakdown = await GetTeacherBreakdownAsync(sm, sy, em, ey);
             var teacherCost = teacherBreakdown.Sum(t => t.Total);
-
-            // Expense cost
             var expenseCost = await GetExpenseCostAsync(sm, sy, em, ey);
             var expenseBreakdown = await GetExpenseBreakdownAsync(sm, sy, em, ey);
 
             var totalCost = teacherCost + expenseCost;
             var profit = validRevenue - totalCost;
 
-            // Collection rate: tính trên HS active (metric hiện tại)
+            // Collection rate (trên HS active)
             var activeEnrollments = await _db.StudentClasses
                 .Where(sc => sc.Student.IsActive)
                 .Select(sc => new { sc.StudentId, sc.ClassId })
@@ -73,15 +68,14 @@ namespace ClassManager.API.Services
             var activeSet = new HashSet<(int, int)>(activeEnrollments.Select(e => (e.StudentId, e.ClassId)));
             var totalEnrollments = activeEnrollments.Count;
 
-            var paidEnrollments = await _db.Payments
+            var allPaid = await _db.Payments
                 .Where(p => p.ClassId > 0)
                 .Select(p => new { p.StudentId, p.ClassId })
                 .ToListAsync();
-            var paidActiveCount = paidEnrollments.Count(p => activeSet.Contains((p.StudentId, p.ClassId)));
+            var paidActiveCount = allPaid.Count(p => activeSet.Contains((p.StudentId, p.ClassId)));
             var collectionRate = totalEnrollments > 0
                 ? Math.Round((decimal)paidActiveCount / totalEnrollments * 100, 1) : 0;
 
-            // HS active chưa có lớp
             var totalActiveStudents = await _db.Students.CountAsync(s => s.IsActive);
             var enrolledStudentCount = activeEnrollments.Select(e => e.StudentId).Distinct().Count();
             var noClassStudents = totalActiveStudents - enrolledStudentCount;
