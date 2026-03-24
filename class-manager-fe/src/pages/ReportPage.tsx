@@ -9,8 +9,9 @@ interface Summary {
   expenseCost: number
   totalCost: number
   profit: number
-  totalStudents: number
-  paidStudents: number
+  totalEnrollments: number
+  paidEnrollments: number
+  noClassStudents: number
   collectionRate: number
   teacherBreakdown: TeacherCostItem[]
   expenseBreakdown: ExpenseItem[]
@@ -198,13 +199,43 @@ export default function ReportPage() {
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-gray-600">Tỷ lệ thu học phí</span>
-              <span className="text-sm font-medium text-gray-800">{summary.paidStudents}/{summary.totalStudents} HS ({summary.collectionRate}%)</span>
+              <span className="text-sm font-medium text-gray-800">
+                {summary.paidEnrollments}/{summary.totalEnrollments} lượt ({summary.collectionRate}%)
+              </span>
             </div>
-            <div className="w-full bg-gray-100 rounded-full h-2.5">
-              <div
-                className="bg-blue-600 h-2.5 rounded-full transition-all"
-                style={{ width: `${Math.min(summary.collectionRate, 100)}%` }}
-              />
+            {(() => {
+              const total = summary.totalEnrollments + summary.noClassStudents
+              if (total === 0) return null
+              return (
+                <div className="w-full bg-gray-100 rounded-full h-3 flex overflow-hidden">
+                  <div
+                    className="bg-green-500 h-3 transition-all"
+                    style={{ width: `${(summary.paidEnrollments / total) * 100}%` }}
+                  />
+                  <div
+                    className="bg-red-400 h-3 transition-all"
+                    style={{ width: `${((summary.totalEnrollments - summary.paidEnrollments) / total) * 100}%` }}
+                  />
+                  <div
+                    className="bg-gray-300 h-3 transition-all"
+                    style={{ width: `${(summary.noClassStudents / total) * 100}%` }}
+                  />
+                </div>
+              )
+            })()}
+            <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />
+                Đã đóng ({summary.paidEnrollments})
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" />
+                Chưa đóng ({summary.totalEnrollments - summary.paidEnrollments})
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-gray-300 inline-block" />
+                Chưa có lớp ({summary.noClassStudents})
+              </span>
             </div>
           </div>
 

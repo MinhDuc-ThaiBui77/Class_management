@@ -13,6 +13,7 @@ interface Class {
   teacherName: string | null
   totalSessions: number | null
   tuitionFee: number | null
+  teacherSalaryPerSession: number | null
 }
 
 interface Teacher {
@@ -47,7 +48,7 @@ function parseName(name: string) {
   return { khoi: '', nhom: 'A', so: '1' }
 }
 
-const emptyForm = { khoi: '', nhom: 'A', so: '1', subject: '', teacherId: '' as string | number, notes: '', totalSessions: '' as string | number, tuitionFee: '' as string | number }
+const emptyForm = { khoi: '', nhom: 'A', so: '1', subject: '', teacherId: '' as string | number, notes: '', totalSessions: '' as string | number, tuitionFee: '' as string | number, teacherSalaryPerSession: '' as string | number }
 
 export default function ClassesPage() {
   const { isAdmin } = useAuth()
@@ -97,7 +98,7 @@ export default function ClassesPage() {
   const openEdit = (cls: Class) => {
     setEditing(cls)
     const parsed = parseName(cls.name)
-    setForm({ ...parsed, subject: cls.subject, teacherId: cls.teacherId ?? '', notes: cls.notes, totalSessions: cls.totalSessions ?? '', tuitionFee: cls.tuitionFee ?? '' })
+    setForm({ ...parsed, subject: cls.subject, teacherId: cls.teacherId ?? '', notes: cls.notes, totalSessions: cls.totalSessions ?? '', tuitionFee: cls.tuitionFee ?? '', teacherSalaryPerSession: cls.teacherSalaryPerSession ?? '' })
     setError('')
     setShowForm(true)
   }
@@ -115,6 +116,7 @@ export default function ClassesPage() {
         notes: form.notes,
         totalSessions: form.totalSessions === '' ? null : Number(form.totalSessions),
         tuitionFee: form.tuitionFee === '' ? null : Number(form.tuitionFee),
+        teacherSalaryPerSession: form.teacherSalaryPerSession === '' ? null : Number(form.teacherSalaryPerSession),
       }
       if (editing) {
         await classesApi.update(editing.id, payload)
@@ -124,7 +126,7 @@ export default function ClassesPage() {
       setShowForm(false)
       loadClasses()
       if (selected && editing?.id === selected.id) {
-        setSelected(prev => prev ? { ...prev, name, subject: form.subject, teacherId: payload.teacherId, totalSessions: payload.totalSessions ?? null, tuitionFee: payload.tuitionFee ?? null } : null)
+        setSelected(prev => prev ? { ...prev, name, subject: form.subject, teacherId: payload.teacherId, totalSessions: payload.totalSessions ?? null, tuitionFee: payload.tuitionFee ?? null, teacherSalaryPerSession: payload.teacherSalaryPerSession ?? null } : null)
       }
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Có lỗi xảy ra.')
@@ -237,7 +239,8 @@ export default function ClassesPage() {
               <div className="flex gap-4 mt-1 text-sm text-gray-500">
                 <span>{enrolled.length} học sinh</span>
                 {selected.totalSessions != null && <span>· {selected.totalSessions} buổi</span>}
-                {selected.tuitionFee != null && <span>· Học phí: {selected.tuitionFee.toLocaleString('vi-VN')}đ</span>}
+                {selected.tuitionFee != null && <span>· Học phí: {selected.tuitionFee.toLocaleString('vi-VN')}₫</span>}
+                {selected.teacherSalaryPerSession != null && <span>· Lương GV/buổi: {selected.teacherSalaryPerSession.toLocaleString('vi-VN')}₫</span>}
               </div>
             </div>
 
@@ -409,6 +412,17 @@ export default function ClassesPage() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Lương GV / buổi (VNĐ)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.teacherSalaryPerSession}
+                  onChange={e => setForm(f => ({ ...f, teacherSalaryPerSession: e.target.value }))}
+                  placeholder="VD: 100000"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Ghi chú</label>

@@ -8,7 +8,6 @@ namespace ClassManager.API.Models
         public string Email { get; set; } = "";
         public string Subject { get; set; } = "";   // Toán | Văn | Tiếng Anh
         public string Notes { get; set; } = "";
-        public decimal? SalaryPerSession { get; set; }
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
