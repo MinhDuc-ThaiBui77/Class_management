@@ -52,9 +52,12 @@ namespace ClassManager.API.Models.DTOs
 
     // ── Session ──────────────────────────────────────────────────────
 
-    public record SessionRequest(int ClassId, DateTime SessionDate, string Topic, string Notes = "");
+    public record SessionRequest(int ClassId, DateTime SessionDate, string Room, string TimeSlot, string Topic = "", string Notes = "");
 
-    public record SessionResponse(int Id, int ClassId, string ClassName, string Subject, DateTime SessionDate, string Topic, string Notes);
+    public record SessionResponse(int Id, int ClassId, string ClassName, string Subject, string? TeacherName,
+        DateTime SessionDate, string Room, string TimeSlot, string Topic, string Notes);
+
+    public record UpdateTopicRequest(string Topic);
 
     // ── Attendance ───────────────────────────────────────────────────
 

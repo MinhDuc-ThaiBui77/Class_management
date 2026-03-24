@@ -68,12 +68,16 @@ export const studentsApi = {
 
 // ── Attendance ────────────────────────────────────────────────────
 export const attendanceApi = {
+  getByWeek: (weekStart: string) =>
+    api.get('/attendance/sessions', { params: { week: weekStart } }),
   getSessions: () =>
     api.get('/attendance/sessions'),
   createSession: (data: object) =>
     api.post('/attendance/sessions', data),
   deleteSession: (id: number) =>
     api.delete(`/attendance/sessions/${id}`),
+  updateTopic: (id: number, topic: string) =>
+    api.put(`/attendance/sessions/${id}/topic`, { topic }),
   getForSession: (sessionId: number) =>
     api.get(`/attendance/sessions/${sessionId}`),
   save: (sessionId: number, records: object[]) =>
@@ -137,6 +141,16 @@ export const reportsApi = {
     api.get('/reports/chart', { params: { year } }),
   export: (period: string, year: number, month?: number, quarter?: number) =>
     api.get('/reports/export', { params: { period, year, month, quarter }, responseType: 'blob' }),
+}
+
+// ── Phone helper ─────────────────────────────────────────────────
+export function normalizePhone(phone: string): string {
+  if (!phone.trim()) return ''
+  const digits = phone.replace(/\D/g, '')
+  const normalized = digits.length === 9 && digits[0] !== '0' ? '0' + digits : digits
+  if (normalized.length !== 10 || normalized[0] !== '0')
+    throw new Error(`SĐT "${phone.trim()}" không hợp lệ. SĐT phải có 10 số và bắt đầu bằng 0.`)
+  return normalized
 }
 
 export default api

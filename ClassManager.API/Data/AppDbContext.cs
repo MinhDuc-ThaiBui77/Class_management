@@ -34,6 +34,12 @@ namespace ClassManager.API.Data
                 .HasIndex(a => new { a.StudentId, a.SessionId })
                 .IsUnique();
 
+            // Session: 1 slot (ngày + phòng + ca) chỉ có 1 buổi
+            modelBuilder.Entity<Session>()
+                .HasIndex(s => new { s.SessionDate, s.Room, s.TimeSlot })
+                .IsUnique()
+                .HasFilter("\"Room\" != '' AND \"TimeSlot\" != ''");
+
             // Payment: mỗi học sinh chỉ đóng 1 lần cho mỗi lớp
             modelBuilder.Entity<Payment>()
                 .HasIndex(p => new { p.StudentId, p.ClassId })

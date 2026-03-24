@@ -127,6 +127,24 @@ using (var scope = app.Services.CreateScope())
             -- Xóa payment rác (ClassId=0, từ data cũ trước khi migrate)
             DELETE FROM "Payments" WHERE "ClassId" = 0;
 
+            -- Thêm Room, TimeSlot vào Sessions (nếu chưa có)
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Sessions' AND column_name = 'Room'
+            ) THEN
+                ALTER TABLE "Sessions" ADD COLUMN "Room" text NOT NULL DEFAULT '';
+                ALTER TABLE "Sessions" ADD COLUMN "TimeSlot" text NOT NULL DEFAULT '';
+            END IF;
+            -- Unique index cho slot (ngày + phòng + ca)
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE indexname = 'IX_Sessions_Date_Room_TimeSlot'
+            ) THEN
+                CREATE UNIQUE INDEX "IX_Sessions_Date_Room_TimeSlot"
+                    ON "Sessions" ("SessionDate", "Room", "TimeSlot")
+                    WHERE "Room" != '' AND "TimeSlot" != '';
+            END IF;
+
             -- Thêm Reason vào Attendances (nếu chưa có)
             IF NOT EXISTS (
                 SELECT 1 FROM information_schema.columns
