@@ -42,21 +42,14 @@ namespace ClassManager.API.Services
             var (startDate, endDate) = GetDateRange(period, year, month, quarter);
             var (sm, sy, em, ey) = GetMonthRange(period, year, month, quarter);
 
-            // Lấy danh sách enrollment hợp lệ để filter payment
-            var validEnrollments = await _db.StudentClasses
-                .Where(sc => sc.Student.IsActive)
-                .Select(sc => new { sc.StudentId, sc.ClassId })
-                .ToListAsync();
-            var validSet = new HashSet<(int, int)>(validEnrollments.Select(e => (e.StudentId, e.ClassId)));
-
-            // Revenue: chỉ tính payment có enrollment hợp lệ
-            var revenue = await _db.Payments
-                .Where(p => p.Student.IsActive && p.ClassId > 0
+            // Revenue: tất cả payment trong kỳ — KHÔNG lọc IsActive
+            // (tiền đã thu thì không mất khi xóa HS)
+            var validRevenue = await _db.Payments
+                .Where(p => p.ClassId > 0
                          && p.PaidDate >= startDate && p.PaidDate <= endDate)
-                .ToListAsync();
-            var validRevenue = revenue.Where(p => validSet.Contains((p.StudentId, p.ClassId))).Sum(p => p.Amount);
+                .SumAsync(p => (decimal?)p.Amount) ?? 0;
 
-            // Expected revenue: tổng TuitionFee cho tất cả enrollment active
+            // Expected revenue: tổng TuitionFee cho enrollment active (metric hiện tại)
             var expectedRevenue = await _db.StudentClasses
                 .Where(sc => sc.Student.IsActive)
                 .SumAsync(sc => sc.Class.TuitionFee ?? 0);
@@ -72,26 +65,30 @@ namespace ClassManager.API.Services
             var totalCost = teacherCost + expenseCost;
             var profit = validRevenue - totalCost;
 
-            // Collection rate: chỉ đếm payment có enrollment hợp lệ
-            var totalEnrollments = validEnrollments.Count;
-            var allPayments = await _db.Payments
-                .Where(p => p.Student.IsActive && p.ClassId > 0)
+            // Collection rate: tính trên HS active (metric hiện tại)
+            var activeEnrollments = await _db.StudentClasses
+                .Where(sc => sc.Student.IsActive)
+                .Select(sc => new { sc.StudentId, sc.ClassId })
+                .ToListAsync();
+            var activeSet = new HashSet<(int, int)>(activeEnrollments.Select(e => (e.StudentId, e.ClassId)));
+            var totalEnrollments = activeEnrollments.Count;
+
+            var paidEnrollments = await _db.Payments
+                .Where(p => p.ClassId > 0)
                 .Select(p => new { p.StudentId, p.ClassId })
                 .ToListAsync();
-            var paidEnrollments = allPayments.Count(p => validSet.Contains((p.StudentId, p.ClassId)));
+            var paidActiveCount = paidEnrollments.Count(p => activeSet.Contains((p.StudentId, p.ClassId)));
             var collectionRate = totalEnrollments > 0
-                ? Math.Round((decimal)paidEnrollments / totalEnrollments * 100, 1) : 0;
+                ? Math.Round((decimal)paidActiveCount / totalEnrollments * 100, 1) : 0;
 
             // HS active chưa có lớp
             var totalActiveStudents = await _db.Students.CountAsync(s => s.IsActive);
-            var enrolledStudentCount = await _db.StudentClasses
-                .Where(sc => sc.Student.IsActive)
-                .Select(sc => sc.StudentId).Distinct().CountAsync();
+            var enrolledStudentCount = activeEnrollments.Select(e => e.StudentId).Distinct().Count();
             var noClassStudents = totalActiveStudents - enrolledStudentCount;
 
             return new ReportSummary(
                 validRevenue, expectedRevenue, teacherCost, expenseCost, totalCost, profit,
-                totalEnrollments, paidEnrollments, noClassStudents, collectionRate,
+                totalEnrollments, paidActiveCount, noClassStudents, collectionRate,
                 teacherBreakdown, expenseBreakdown);
         }
 
@@ -100,35 +97,25 @@ namespace ClassManager.API.Services
             var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             var yearEnd = new DateTime(year, 12, 31, 23, 59, 59, DateTimeKind.Utc);
 
-            // Lấy enrollment hợp lệ
-            var validEnrollments = await _db.StudentClasses
-                .Where(sc => sc.Student.IsActive)
-                .Select(sc => new { sc.StudentId, sc.ClassId })
-                .ToListAsync();
-            var validSet = new HashSet<(int, int)>(validEnrollments.Select(e => (e.StudentId, e.ClassId)));
+            // Revenue: tất cả payment — KHÔNG lọc IsActive (tiền đã thu là đã thu)
+            var revenueByMonth = await _db.Payments
+                .Where(p => p.ClassId > 0 && p.PaidDate >= yearStart && p.PaidDate <= yearEnd)
+                .GroupBy(p => p.PaidDate.Month)
+                .Select(g => new { Month = g.Key, Total = g.Sum(p => p.Amount) })
+                .ToDictionaryAsync(x => x.Month, x => x.Total);
 
-            // Revenue: chỉ tính payment có enrollment hợp lệ
-            var allPayments = await _db.Payments
-                .Where(p => p.Student.IsActive && p.ClassId > 0 && p.PaidDate >= yearStart && p.PaidDate <= yearEnd)
-                .Select(p => new { p.StudentId, p.ClassId, p.Amount, Month = p.PaidDate.Month })
-                .ToListAsync();
-            var revenueByMonth = allPayments
-                .Where(p => validSet.Contains((p.StudentId, p.ClassId)))
-                .GroupBy(p => p.Month)
-                .ToDictionary(g => g.Key, g => g.Sum(p => p.Amount));
-
-            // Teacher cost: sessions per class per month (salary on Class, not Teacher)
+            // Teacher cost: Lương = Số HS × 35k × 75% per session
+            const decimal RATE = 35000m * 0.75m; // = 26,250 per student per session
             var sessionsByClassMonth = await _db.Sessions
-                .Where(s => s.SessionDate >= yearStart && s.SessionDate <= yearEnd
-                         && s.Class.TeacherSalaryPerSession != null && s.Class.TeacherSalaryPerSession > 0)
+                .Where(s => s.SessionDate >= yearStart && s.SessionDate <= yearEnd && s.Class.TeacherId != null)
                 .GroupBy(s => new { Month = s.SessionDate.Month, s.ClassId })
                 .Select(g => new { g.Key.Month, g.Key.ClassId, Count = g.Count() })
                 .ToListAsync();
 
-            var classSalaries = await _db.Classes
-                .Where(c => c.TeacherSalaryPerSession != null && c.TeacherSalaryPerSession > 0)
-                .Select(c => new { c.Id, c.TeacherSalaryPerSession })
-                .ToDictionaryAsync(c => c.Id, c => c.TeacherSalaryPerSession ?? 0);
+            var classStudentCounts = await _db.Classes
+                .Where(c => c.TeacherId != null)
+                .Select(c => new { c.Id, StudentCount = c.StudentClasses.Count(sc => sc.Student.IsActive) })
+                .ToDictionaryAsync(c => c.Id, c => c.StudentCount);
 
             // 1 query: expenses
             var nonRecurringByMonth = await _db.Expenses
@@ -147,8 +134,8 @@ namespace ClassManager.API.Services
                 var revenue = revenueByMonth.GetValueOrDefault(m, 0);
 
                 var teacherCost = sessionsByClassMonth
-                    .Where(s => s.Month == m && classSalaries.ContainsKey(s.ClassId))
-                    .Sum(s => s.Count * classSalaries[s.ClassId]);
+                    .Where(s => s.Month == m && classStudentCounts.ContainsKey(s.ClassId))
+                    .Sum(s => s.Count * classStudentCounts[s.ClassId] * RATE);
 
                 var expenseCost = nonRecurringByMonth.GetValueOrDefault(m, 0) + recurringMonthly;
                 var totalCost = teacherCost + expenseCost;
@@ -238,32 +225,34 @@ namespace ClassManager.API.Services
             var startDate = new DateTime(sy, sm, 1, 0, 0, 0, DateTimeKind.Utc);
             var endDate = new DateTime(ey, em, DateTime.DaysInMonth(ey, em), 23, 59, 59, DateTimeKind.Utc);
 
-            // Tính theo lớp: mỗi lớp có mức lương riêng
+            // Công thức: Lương GV/buổi = Số HS × 35,000 × 75%
+            const decimal RATE_PER_STUDENT = 35000m;
+            const decimal TEACHER_SHARE = 0.75m;
+
             var classData = await _db.Classes
-                .Where(c => c.TeacherId != null && c.TeacherSalaryPerSession != null && c.TeacherSalaryPerSession > 0)
+                .Where(c => c.TeacherId != null)
                 .Select(c => new
                 {
                     TeacherId = c.TeacherId!.Value,
                     TeacherName = c.Teacher!.FullName,
                     c.Subject,
                     ClassName = c.Name,
-                    Salary = c.TeacherSalaryPerSession!.Value,
+                    StudentCount = c.StudentClasses.Count(sc => sc.Student.IsActive),
                     SessionCount = c.Sessions.Count(s => s.SessionDate >= startDate && s.SessionDate <= endDate)
                 })
                 .ToListAsync();
 
-            // Nhóm theo GV để hiển thị tổng hợp (cộng dồn các lớp)
             return classData
                 .Where(c => c.SessionCount > 0)
                 .GroupBy(c => new { c.TeacherId, c.TeacherName, c.Subject })
-                .Select(g => new TeacherCostItem(
-                    g.Key.TeacherId,
-                    g.Key.TeacherName,
-                    g.Key.Subject,
-                    g.Sum(c => c.SessionCount),
-                    0, // không còn lương cố định per GV
-                    g.Sum(c => c.SessionCount * c.Salary)
-                ))
+                .Select(g =>
+                {
+                    var totalSessions = g.Sum(c => c.SessionCount);
+                    var salaryPerSession = g.Sum(c => c.StudentCount * RATE_PER_STUDENT * TEACHER_SHARE * c.SessionCount) / (totalSessions > 0 ? totalSessions : 1);
+                    var total = g.Sum(c => c.SessionCount * c.StudentCount * RATE_PER_STUDENT * TEACHER_SHARE);
+                    return new TeacherCostItem(g.Key.TeacherId, g.Key.TeacherName, g.Key.Subject,
+                        totalSessions, Math.Round(salaryPerSession), Math.Round(total));
+                })
                 .ToList();
         }
 

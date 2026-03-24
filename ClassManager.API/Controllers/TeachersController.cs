@@ -13,7 +13,8 @@ namespace ClassManager.API.Controllers
     {
         private readonly TeacherService _svc;
         private readonly UserService    _userSvc;
-        public TeachersController(TeacherService svc, UserService userSvc) { _svc = svc; _userSvc = userSvc; }
+        private readonly ExportService  _exportSvc;
+        public TeachersController(TeacherService svc, UserService userSvc, ExportService exportSvc) { _svc = svc; _userSvc = userSvc; _exportSvc = exportSvc; }
 
         private int  CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         private bool IsAdmin       => User.IsInRole("admin");
@@ -24,6 +25,14 @@ namespace ClassManager.API.Controllers
             // Admin thấy tất cả, teacher chỉ thấy bản thân
             var userId = IsAdmin ? (int?)null : CurrentUserId;
             return Ok(await _svc.GetAllAsync(userId));
+        }
+
+        [HttpGet("export")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> Export()
+        {
+            var bytes = await _exportSvc.ExportTeachersAsync();
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "danh-sach-giao-vien.xlsx");
         }
 
         [HttpGet("subjects")]

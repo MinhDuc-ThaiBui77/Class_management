@@ -15,11 +15,12 @@ namespace ClassManager.API.Services
         public async Task<List<UserResponse>> GetAllAsync()
         {
             return await _db.Users
-                .OrderBy(u => u.FullName)
-                .Select(u => new UserResponse(
-                    u.Id, u.FullName, u.Email, u.Role, u.IsActive, u.CreatedAt,
-                    _db.Teachers.Where(t => t.UserId == u.Id).Select(t => (int?)t.Id).FirstOrDefault(),
-                    _db.Teachers.Where(t => t.UserId == u.Id).Select(t => t.FullName).FirstOrDefault()))
+                .GroupJoin(_db.Teachers, u => u.Id, t => t.UserId, (u, ts) => new { u, t = ts.FirstOrDefault() })
+                .OrderBy(x => x.u.FullName)
+                .Select(x => new UserResponse(
+                    x.u.Id, x.u.FullName, x.u.Email, x.u.Role, x.u.IsActive, x.u.CreatedAt,
+                    x.t != null ? (int?)x.t.Id : null,
+                    x.t != null ? x.t.FullName : null))
                 .ToListAsync();
         }
 

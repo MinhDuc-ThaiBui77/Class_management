@@ -13,13 +13,22 @@ namespace ClassManager.API.Controllers
     {
         private readonly PaymentService _svc;
         private readonly UserService    _userSvc;
-        public PaymentsController(PaymentService svc, UserService userSvc) { _svc = svc; _userSvc = userSvc; }
+        private readonly ExportService  _exportSvc;
+        public PaymentsController(PaymentService svc, UserService userSvc, ExportService exportSvc) { _svc = svc; _userSvc = userSvc; _exportSvc = exportSvc; }
 
         private int  CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         private bool IsAdmin       => User.IsInRole("admin");
 
         private async Task<int?> CallerTeacherIdAsync() =>
             IsAdmin ? null : await _userSvc.GetTeacherIdByUserIdAsync(CurrentUserId);
+
+        [HttpGet("export")]
+        public async Task<IActionResult> Export([FromQuery] int? classId = null)
+        {
+            var bytes = await _exportSvc.ExportPaymentsAsync(classId);
+            var name = classId.HasValue ? $"hoc-phi-lop-{classId}.xlsx" : "hoc-phi.xlsx";
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
+        }
 
         [HttpGet]
         public async Task<IActionResult> GetAll()

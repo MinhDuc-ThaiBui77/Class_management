@@ -97,6 +97,7 @@ namespace ClassManager.API.Services
         // ── Import + enroll vào lớp ───────────────────────────────────
         public async Task<ImportResult> ImportAndEnrollAsync(int classId, Stream fileStream)
         {
+            using var transaction = await _db.Database.BeginTransactionAsync();
             var cls = await _db.Classes.FindAsync(classId);
             if (cls == null) throw new InvalidOperationException("Lớp học không tồn tại.");
 
@@ -121,6 +122,7 @@ namespace ClassManager.API.Services
                 enrolled++;
             }
             await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
 
             return result;
         }

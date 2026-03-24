@@ -54,8 +54,9 @@ namespace ClassManager.API.Data
                 .Property(e => e.Amount)
                 .HasPrecision(12, 2);
 
+            // TuitionFee precision
             modelBuilder.Entity<Class>()
-                .Property(c => c.TeacherSalaryPerSession)
+                .Property(c => c.TuitionFee)
                 .HasPrecision(12, 2);
         }
     }
