@@ -11,9 +11,13 @@ dist/
 .cache/
 
 # Env / secrets
+appsettings.json
 appsettings.Development.json
 .env
 .env.local
+
+# Test data
+test-data/
 
 # OS
 .DS_Store
