@@ -58,7 +58,7 @@ namespace ClassManager.API.Services
 
         public async Task<ClassResponse?> UpdateAsync(int id, ClassRequest req)
         {
-            await ValidateAsync(req);
+            await ValidateAsync(req, id);
             var cls = await _db.Classes.Include(c => c.StudentClasses).Include(c => c.Teacher).FirstOrDefaultAsync(c => c.Id == id);
             if (cls == null) return null;
             cls.Name          = req.Name.Trim();
@@ -118,7 +118,7 @@ namespace ClassManager.API.Services
             return true;
         }
 
-        private async Task ValidateAsync(ClassRequest req)
+        private async Task ValidateAsync(ClassRequest req, int? excludeId = null)
         {
             if (string.IsNullOrWhiteSpace(req.Name))
                 throw new InvalidOperationException("Tên lớp không được để trống.");
@@ -126,6 +126,13 @@ namespace ClassManager.API.Services
                 throw new InvalidOperationException("Môn học không được để trống.");
             if (!SubjectList.Valid.Contains(req.Subject))
                 throw new InvalidOperationException($"Môn học không hợp lệ.");
+
+            // Check trùng tên lớp
+            var dupName = await _db.Classes
+                .AnyAsync(c => c.Name == req.Name.Trim() && (excludeId == null || c.Id != excludeId.Value));
+            if (dupName)
+                throw new InvalidOperationException($"Lớp \"{req.Name.Trim()}\" đã tồn tại. Vui lòng chọn tên khác.");
+
             if (req.TeacherId.HasValue)
             {
                 var teacher = await _db.Teachers.FindAsync(req.TeacherId.Value);

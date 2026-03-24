@@ -101,7 +101,7 @@ namespace ClassManager.API.Services
                         FullName = req.FullName.Trim(),
                         Subject  = req.TeacherSubject,
                         Email    = req.Email.Trim().ToLower(),
-                        Phone    = req.TeacherPhone?.Trim() ?? "",
+                        Phone    = PhoneHelper.Normalize(req.TeacherPhone),
                         UserId   = user.Id,
                     };
                     _db.Teachers.Add(teacher);
@@ -181,7 +181,7 @@ namespace ClassManager.API.Services
                             FullName = user.FullName,
                             Subject  = req.TeacherSubject,
                             Email    = user.Email,
-                            Phone    = req.TeacherPhone?.Trim() ?? "",
+                            Phone    = PhoneHelper.Normalize(req.TeacherPhone),
                             UserId   = user.Id,
                         });
                     }

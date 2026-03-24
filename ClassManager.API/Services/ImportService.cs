@@ -39,18 +39,18 @@ namespace ClassManager.API.Services
         }
 
         // ── Import học sinh (tạo mới nếu chưa có) ────────────────────
-        public async Task<(ImportResult Result, List<int> CreatedIds)> ImportStudentsAsync(Stream fileStream)
+        public async Task<(ImportResult Result, List<int> StudentIds)> ImportStudentsAsync(Stream fileStream)
         {
             var rows = ParseRows(fileStream);
             int created = 0, skipped = 0;
             var errors  = new List<ImportRowError>();
-            var createdIds = new List<int>();
+            var studentIds = new List<int>(); // Tất cả HS (mới tạo + đã tồn tại)
 
-            // Dedup theo (FullName + ParentPhone) — tránh import trùng
-            var existingKeys = await _db.Students
+            // Load existing students để dedup + tìm ID
+            var existingStudents = await _db.Students
                 .Where(s => s.IsActive)
-                .Select(s => s.FullName.ToLower() + "|" + s.ParentPhone)
-                .ToHashSetAsync();
+                .Select(s => new { s.Id, Key = s.FullName.ToLower() + "|" + s.ParentPhone })
+                .ToDictionaryAsync(s => s.Key, s => s.Id);
 
             foreach (var (row, idx) in rows.Select((r, i) => (r, i + 2)))
             {
@@ -60,10 +60,18 @@ namespace ClassManager.API.Services
                     continue;
                 }
 
-                // Skip nếu (tên + SĐT PH) đã tồn tại
-                var key = row.FullName.Trim().ToLower() + "|" + (row.ParentPhone?.Trim() ?? "");
-                if (existingKeys.Contains(key))
+                // Normalize SĐT
+                var rawPhone = row.ParentPhone?.Trim() ?? "";
+                var phoneDigits = new string(rawPhone.Where(char.IsDigit).ToArray());
+                if (phoneDigits.Length == 9 && phoneDigits[0] != '0')
+                    phoneDigits = "0" + phoneDigits;
+                var normalizedPhone = phoneDigits.Length == 10 && phoneDigits[0] == '0' ? phoneDigits : rawPhone;
+
+                var key = row.FullName.Trim().ToLower() + "|" + normalizedPhone;
+
+                if (existingStudents.TryGetValue(key, out var existingId))
                 {
+                    studentIds.Add(existingId);
                     skipped++;
                     continue;
                 }
@@ -72,18 +80,18 @@ namespace ClassManager.API.Services
                 {
                     FullName     = row.FullName.Trim(),
                     Address      = row.Address?.Trim() ?? "",
-                    ParentPhone  = row.ParentPhone?.Trim() ?? "",
+                    ParentPhone  = normalizedPhone,
                     EnrolledDate = DateTime.UtcNow,
                 };
 
                 _db.Students.Add(student);
                 await _db.SaveChangesAsync();
-                createdIds.Add(student.Id);
-                existingKeys.Add(key);
+                studentIds.Add(student.Id);
+                existingStudents[key] = student.Id;
                 created++;
             }
 
-            return (new ImportResult(created, skipped, errors), createdIds);
+            return (new ImportResult(created, skipped, errors), studentIds);
         }
 
         // ── Import + enroll vào lớp ───────────────────────────────────
@@ -92,16 +100,17 @@ namespace ClassManager.API.Services
             var cls = await _db.Classes.FindAsync(classId);
             if (cls == null) throw new InvalidOperationException("Lớp học không tồn tại.");
 
-            var (result, createdIds) = await ImportStudentsAsync(fileStream);
+            var (result, studentIds) = await ImportStudentsAsync(fileStream);
 
-            // Enroll tất cả HS vừa tạo + những HS đã có nhưng chưa trong lớp
-            // (chỉ enroll các HS vừa import thành công)
+            // Enroll TẤT CẢ HS (mới + đã tồn tại) vào lớp nếu chưa enroll
             var alreadyEnrolled = await _db.StudentClasses
                 .Where(sc => sc.ClassId == classId)
                 .Select(sc => sc.StudentId)
                 .ToHashSetAsync();
 
-            foreach (var sid in createdIds.Where(id => !alreadyEnrolled.Contains(id)))
+            var enrolled = 0;
+            var toEnroll = studentIds.Distinct().Where(id => !alreadyEnrolled.Contains(id));
+            foreach (var sid in toEnroll)
             {
                 _db.StudentClasses.Add(new StudentClass
                 {
@@ -109,6 +118,7 @@ namespace ClassManager.API.Services
                     StudentId    = sid,
                     EnrolledDate = DateTime.UtcNow,
                 });
+                enrolled++;
             }
             await _db.SaveChangesAsync();
 
