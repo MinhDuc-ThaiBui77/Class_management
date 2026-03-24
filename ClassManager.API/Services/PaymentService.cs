@@ -10,40 +10,76 @@ namespace ClassManager.API.Services
         private readonly AppDbContext _db;
         public PaymentService(AppDbContext db) => _db = db;
 
-        public async Task<MonthlyPaymentResponse> GetMonthlyStatusAsync(int month, int year, int? teacherId = null)
+        public async Task<PaymentListResponse> GetPaymentStatusAsync(int? teacherId = null)
         {
-            var studentQuery = _db.Students.Where(s => s.IsActive);
+            var query = _db.StudentClasses
+                .Where(sc => sc.Student.IsActive);
+
             if (teacherId.HasValue)
+                query = query.Where(sc => sc.Class.TeacherId == teacherId.Value);
+
+            var enrollments = await query
+                .Select(sc => new
+                {
+                    sc.StudentId,
+                    StudentName = sc.Student.FullName,
+                    ParentPhone = sc.Student.ParentPhone,
+                    sc.ClassId,
+                    ClassName = sc.Class.Name,
+                    Subject = sc.Class.Subject,
+                    TeacherName = sc.Class.Teacher != null ? sc.Class.Teacher.FullName : null,
+                    TuitionFee = sc.Class.TuitionFee ?? 0,
+                    Payment = _db.Payments
+                        .Where(p => p.StudentId == sc.StudentId && p.ClassId == sc.ClassId)
+                        .Select(p => new { p.Id, p.Amount, p.PaidDate, p.Notes })
+                        .FirstOrDefault()
+                })
+                .OrderBy(x => x.StudentName)
+                .ThenBy(x => x.ClassName)
+                .ToListAsync();
+
+            var items = enrollments.Select(e => new PaymentStatusItem(
+                e.StudentId,
+                e.StudentName,
+                e.ClassId,
+                e.ClassName,
+                e.Subject,
+                e.TeacherName,
+                e.ParentPhone,
+                e.TuitionFee,
+                true,
+                e.Payment != null,
+                e.Payment?.Id,
+                e.Payment?.Amount ?? 0,
+                e.Payment?.PaidDate,
+                e.Payment?.Notes ?? ""
+            )).ToList();
+
+            // Thêm HS active chưa có lớp (chỉ admin mới thấy toàn bộ)
+            if (!teacherId.HasValue)
             {
-                var studentIds = await _db.StudentClasses
-                    .Where(sc => sc.Class.TeacherId == teacherId.Value)
-                    .Select(sc => sc.StudentId)
-                    .Distinct()
+                var enrolledIds = items.Select(i => i.StudentId).Distinct().ToHashSet();
+                var noClassStudents = await _db.Students
+                    .Where(s => s.IsActive && !enrolledIds.Contains(s.Id))
+                    .OrderBy(s => s.FullName)
+                    .Select(s => new { s.Id, s.FullName, s.ParentPhone })
                     .ToListAsync();
-                studentQuery = studentQuery.Where(s => studentIds.Contains(s.Id));
+
+                foreach (var s in noClassStudents)
+                {
+                    items.Add(new PaymentStatusItem(
+                        s.Id, s.FullName, 0, null, null, null, s.ParentPhone,
+                        0, false, false, null, 0, null, ""
+                    ));
+                }
             }
-            var students = await studentQuery.OrderBy(s => s.FullName).ToListAsync();
 
-            var payments = await _db.Payments
-                .Where(p => p.MonthOf == month && p.YearOf == year)
-                .ToDictionaryAsync(p => p.StudentId);
-
-            var items = students.Select(s =>
-            {
-                var hasPaid = payments.TryGetValue(s.Id, out var p);
-                return new PaymentStatusItem(
-                    s.Id, s.FullName,
-                    hasPaid,
-                    hasPaid ? p!.Amount : 0,
-                    hasPaid ? p!.PaidDate : null,
-                    hasPaid ? p!.Notes : ""
-                );
-            }).ToList();
-
-            return new MonthlyPaymentResponse(
-                month, year, items,
+            return new PaymentListResponse(
+                items,
                 items.Where(i => i.IsPaid).Sum(i => i.Amount),
-                items.Count(i => !i.IsPaid)
+                items.Count(i => i.HasClass),
+                items.Count(i => i.IsPaid),
+                items.Count(i => !i.IsPaid && i.HasClass)
             );
         }
 
@@ -52,21 +88,21 @@ namespace ClassManager.API.Services
             if (req.Amount <= 0)
                 throw new InvalidOperationException("Số tiền phải lớn hơn 0.");
 
-            var exists = await _db.Payments.AnyAsync(p =>
-                p.StudentId == req.StudentId &&
-                p.MonthOf   == req.MonthOf &&
-                p.YearOf    == req.YearOf);
+            var enrolled = await _db.StudentClasses.AnyAsync(
+                sc => sc.StudentId == req.StudentId && sc.ClassId == req.ClassId);
+            if (!enrolled)
+                throw new InvalidOperationException("Học sinh chưa đăng ký lớp này.");
 
+            var exists = await _db.Payments.AnyAsync(
+                p => p.StudentId == req.StudentId && p.ClassId == req.ClassId);
             if (exists)
-                throw new InvalidOperationException(
-                    $"Học sinh này đã đóng học phí tháng {req.MonthOf}/{req.YearOf}.");
+                throw new InvalidOperationException("Học sinh đã đóng học phí cho lớp này.");
 
             var payment = new Payment
             {
                 StudentId = req.StudentId,
+                ClassId   = req.ClassId,
                 Amount    = req.Amount,
-                MonthOf   = req.MonthOf,
-                YearOf    = req.YearOf,
                 PaidDate  = DateTime.UtcNow,
                 Notes     = req.Notes,
             };

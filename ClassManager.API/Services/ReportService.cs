@@ -10,78 +10,147 @@ namespace ClassManager.API.Services
         private readonly AppDbContext _db;
         public ReportService(AppDbContext db) => _db = db;
 
-        /// <summary>
-        /// Lấy danh sách (startMonth, startYear) → (endMonth, endYear) theo period
-        /// </summary>
-        private static (int startMonth, int startYear, int endMonth, int endYear) GetRange(string period, int year, int month, int quarter)
+        private static (DateTime start, DateTime end) GetDateRange(string period, int year, int month, int quarter)
+        {
+            return period switch
+            {
+                "quarter" => (
+                    new DateTime(year, ((quarter - 1) * 3) + 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                    new DateTime(year, quarter * 3, DateTime.DaysInMonth(year, quarter * 3), 23, 59, 59, DateTimeKind.Utc)),
+                "year" => (
+                    new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                    new DateTime(year, 12, 31, 23, 59, 59, DateTimeKind.Utc)),
+                _ => (
+                    new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc),
+                    new DateTime(year, month, DateTime.DaysInMonth(year, month), 23, 59, 59, DateTimeKind.Utc)),
+            };
+        }
+
+        // For teacher breakdown we still need month-based range
+        private static (int sm, int sy, int em, int ey) GetMonthRange(string period, int year, int month, int quarter)
         {
             return period switch
             {
                 "quarter" => (((quarter - 1) * 3) + 1, year, quarter * 3, year),
                 "year"    => (1, year, 12, year),
-                _         => (month, year, month, year), // month
+                _         => (month, year, month, year),
             };
         }
 
         public async Task<ReportSummary> GetSummaryAsync(string period, int year, int month = 1, int quarter = 1)
         {
-            var (sm, sy, em, ey) = GetRange(period, year, month, quarter);
+            var (startDate, endDate) = GetDateRange(period, year, month, quarter);
+            var (sm, sy, em, ey) = GetMonthRange(period, year, month, quarter);
 
-            // Revenue: tổng payments trong kỳ
+            // Lấy danh sách enrollment hợp lệ để filter payment
+            var validEnrollments = await _db.StudentClasses
+                .Where(sc => sc.Student.IsActive)
+                .Select(sc => new { sc.StudentId, sc.ClassId })
+                .ToListAsync();
+            var validSet = new HashSet<(int, int)>(validEnrollments.Select(e => (e.StudentId, e.ClassId)));
+
+            // Revenue: chỉ tính payment có enrollment hợp lệ
             var revenue = await _db.Payments
-                .Where(p => (p.YearOf > sy || (p.YearOf == sy && p.MonthOf >= sm))
-                         && (p.YearOf < ey || (p.YearOf == ey && p.MonthOf <= em)))
-                .SumAsync(p => (decimal?)p.Amount) ?? 0;
+                .Where(p => p.Student.IsActive && p.ClassId > 0
+                         && p.PaidDate >= startDate && p.PaidDate <= endDate)
+                .ToListAsync();
+            var validRevenue = revenue.Where(p => validSet.Contains((p.StudentId, p.ClassId))).Sum(p => p.Amount);
 
-            // Expected revenue: tổng (tuitionFee × active students) cho tất cả lớp
-            var classData = await _db.Classes
-                .Select(c => new
-                {
-                    TuitionFee = c.TuitionFee ?? 0,
-                    StudentCount = c.StudentClasses.Count(sc => sc.Student.IsActive)
-                }).ToListAsync();
-            var monthCount = ((ey - sy) * 12) + (em - sm) + 1;
-            var expectedRevenue = classData.Sum(c => c.TuitionFee * c.StudentCount);
+            // Expected revenue: tổng TuitionFee cho tất cả enrollment active
+            var expectedRevenue = await _db.StudentClasses
+                .Where(sc => sc.Student.IsActive)
+                .SumAsync(sc => sc.Class.TuitionFee ?? 0);
 
-            // Teacher cost: sessions in period × salaryPerSession
+            // Teacher cost
             var teacherBreakdown = await GetTeacherBreakdownAsync(sm, sy, em, ey);
             var teacherCost = teacherBreakdown.Sum(t => t.Total);
 
-            // Expense cost: recurring + non-recurring in period
+            // Expense cost
             var expenseCost = await GetExpenseCostAsync(sm, sy, em, ey);
             var expenseBreakdown = await GetExpenseBreakdownAsync(sm, sy, em, ey);
 
             var totalCost = teacherCost + expenseCost;
-            var profit = revenue - totalCost;
+            var profit = validRevenue - totalCost;
 
-            // Collection rate
-            var totalStudents = await _db.Students.CountAsync(s => s.IsActive);
-            var paidStudentIds = await _db.Payments
-                .Where(p => (p.YearOf > sy || (p.YearOf == sy && p.MonthOf >= sm))
-                         && (p.YearOf < ey || (p.YearOf == ey && p.MonthOf <= em)))
-                .Select(p => p.StudentId)
-                .Distinct()
-                .CountAsync();
-            var collectionRate = totalStudents > 0 ? Math.Round((decimal)paidStudentIds / totalStudents * 100, 1) : 0;
+            // Collection rate: chỉ đếm payment có enrollment hợp lệ
+            var totalEnrollments = validEnrollments.Count;
+            var allPayments = await _db.Payments
+                .Where(p => p.Student.IsActive && p.ClassId > 0)
+                .Select(p => new { p.StudentId, p.ClassId })
+                .ToListAsync();
+            var paidEnrollments = allPayments.Count(p => validSet.Contains((p.StudentId, p.ClassId)));
+            var collectionRate = totalEnrollments > 0
+                ? Math.Round((decimal)paidEnrollments / totalEnrollments * 100, 1) : 0;
+
+            // HS active chưa có lớp
+            var totalActiveStudents = await _db.Students.CountAsync(s => s.IsActive);
+            var enrolledStudentCount = await _db.StudentClasses
+                .Where(sc => sc.Student.IsActive)
+                .Select(sc => sc.StudentId).Distinct().CountAsync();
+            var noClassStudents = totalActiveStudents - enrolledStudentCount;
 
             return new ReportSummary(
-                revenue, expectedRevenue, teacherCost, expenseCost, totalCost, profit,
-                totalStudents, paidStudentIds, collectionRate,
+                validRevenue, expectedRevenue, teacherCost, expenseCost, totalCost, profit,
+                totalEnrollments, paidEnrollments, noClassStudents, collectionRate,
                 teacherBreakdown, expenseBreakdown);
         }
 
         public async Task<List<MonthlyReportItem>> GetChartDataAsync(int year)
         {
+            var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var yearEnd = new DateTime(year, 12, 31, 23, 59, 59, DateTimeKind.Utc);
+
+            // Lấy enrollment hợp lệ
+            var validEnrollments = await _db.StudentClasses
+                .Where(sc => sc.Student.IsActive)
+                .Select(sc => new { sc.StudentId, sc.ClassId })
+                .ToListAsync();
+            var validSet = new HashSet<(int, int)>(validEnrollments.Select(e => (e.StudentId, e.ClassId)));
+
+            // Revenue: chỉ tính payment có enrollment hợp lệ
+            var allPayments = await _db.Payments
+                .Where(p => p.Student.IsActive && p.ClassId > 0 && p.PaidDate >= yearStart && p.PaidDate <= yearEnd)
+                .Select(p => new { p.StudentId, p.ClassId, p.Amount, Month = p.PaidDate.Month })
+                .ToListAsync();
+            var revenueByMonth = allPayments
+                .Where(p => validSet.Contains((p.StudentId, p.ClassId)))
+                .GroupBy(p => p.Month)
+                .ToDictionary(g => g.Key, g => g.Sum(p => p.Amount));
+
+            // Teacher cost: sessions per class per month (salary on Class, not Teacher)
+            var sessionsByClassMonth = await _db.Sessions
+                .Where(s => s.SessionDate >= yearStart && s.SessionDate <= yearEnd
+                         && s.Class.TeacherSalaryPerSession != null && s.Class.TeacherSalaryPerSession > 0)
+                .GroupBy(s => new { Month = s.SessionDate.Month, s.ClassId })
+                .Select(g => new { g.Key.Month, g.Key.ClassId, Count = g.Count() })
+                .ToListAsync();
+
+            var classSalaries = await _db.Classes
+                .Where(c => c.TeacherSalaryPerSession != null && c.TeacherSalaryPerSession > 0)
+                .Select(c => new { c.Id, c.TeacherSalaryPerSession })
+                .ToDictionaryAsync(c => c.Id, c => c.TeacherSalaryPerSession ?? 0);
+
+            // 1 query: expenses
+            var nonRecurringByMonth = await _db.Expenses
+                .Where(e => !e.IsRecurring && e.ExpenseDate >= yearStart && e.ExpenseDate <= yearEnd)
+                .GroupBy(e => e.ExpenseDate.Month)
+                .Select(g => new { Month = g.Key, Total = g.Sum(e => e.Amount) })
+                .ToDictionaryAsync(x => x.Month, x => x.Total);
+
+            var recurringMonthly = await _db.Expenses
+                .Where(e => e.IsRecurring)
+                .SumAsync(e => (decimal?)e.Amount) ?? 0;
+
             var result = new List<MonthlyReportItem>();
             for (int m = 1; m <= 12; m++)
             {
-                var revenue = await _db.Payments
-                    .Where(p => p.YearOf == year && p.MonthOf == m)
-                    .SumAsync(p => (decimal?)p.Amount) ?? 0;
+                var revenue = revenueByMonth.GetValueOrDefault(m, 0);
 
-                var teacherBreakdown = await GetTeacherBreakdownAsync(m, year, m, year);
-                var teacherCost = teacherBreakdown.Sum(t => t.Total);
-                var expenseCost = await GetExpenseCostAsync(m, year, m, year);
+                var teacherCost = sessionsByClassMonth
+                    .Where(s => s.Month == m && classSalaries.ContainsKey(s.ClassId))
+                    .Sum(s => s.Count * classSalaries[s.ClassId]);
+
+                var expenseCost = nonRecurringByMonth.GetValueOrDefault(m, 0) + recurringMonthly;
                 var totalCost = teacherCost + expenseCost;
 
                 result.Add(new MonthlyReportItem(m, year, revenue, totalCost, revenue - totalCost));
@@ -94,32 +163,32 @@ namespace ClassManager.API.Services
             var summary = await GetSummaryAsync(period, year, month, quarter);
             var periodLabel = period switch
             {
-                "quarter" => $"Quý {quarter}/{year}",
-                "year"    => $"Năm {year}",
-                _         => $"Tháng {month}/{year}",
+                "quarter" => $"Quy {quarter}/{year}",
+                "year"    => $"Nam {year}",
+                _         => $"Thang {month}/{year}",
             };
 
             using var wb = new XLWorkbook();
 
-            // Sheet 1: Tổng quan
-            var ws1 = wb.AddWorksheet("Tổng quan");
-            ws1.Cell(1, 1).Value = $"BÁO CÁO TÀI CHÍNH - {periodLabel}";
+            // Sheet 1: Tong quan
+            var ws1 = wb.AddWorksheet("Tong quan");
+            ws1.Cell(1, 1).Value = $"BAO CAO TAI CHINH - {periodLabel}";
             ws1.Cell(1, 1).Style.Font.Bold = true;
             ws1.Cell(1, 1).Style.Font.FontSize = 14;
 
             ws1.Cell(3, 1).Value = "Doanh thu";          ws1.Cell(3, 2).Value = (double)summary.Revenue;
-            ws1.Cell(4, 1).Value = "Chi phí giáo viên";  ws1.Cell(4, 2).Value = (double)summary.TeacherCost;
-            ws1.Cell(5, 1).Value = "Chi phí khác";       ws1.Cell(5, 2).Value = (double)summary.ExpenseCost;
-            ws1.Cell(6, 1).Value = "Tổng chi phí";       ws1.Cell(6, 2).Value = (double)summary.TotalCost;
-            ws1.Cell(7, 1).Value = "Lợi nhuận";          ws1.Cell(7, 2).Value = (double)summary.Profit;
-            ws1.Cell(8, 1).Value = "Tỷ lệ thu học phí";  ws1.Cell(8, 2).Value = $"{summary.CollectionRate}%";
+            ws1.Cell(4, 1).Value = "Chi phi giao vien";  ws1.Cell(4, 2).Value = (double)summary.TeacherCost;
+            ws1.Cell(5, 1).Value = "Chi phi khac";       ws1.Cell(5, 2).Value = (double)summary.ExpenseCost;
+            ws1.Cell(6, 1).Value = "Tong chi phi";       ws1.Cell(6, 2).Value = (double)summary.TotalCost;
+            ws1.Cell(7, 1).Value = "Loi nhuan";          ws1.Cell(7, 2).Value = (double)summary.Profit;
+            ws1.Cell(8, 1).Value = "Ty le thu hoc phi";  ws1.Cell(8, 2).Value = $"{summary.CollectionRate}%";
 
             ws1.Column(2).Style.NumberFormat.Format = "#,##0";
             ws1.Range("A3:A8").Style.Font.Bold = true;
 
-            // Sheet 2: Chi tiết lương GV
-            var ws2 = wb.AddWorksheet("Lương giáo viên");
-            var headers2 = new[] { "Giáo viên", "Môn", "Số buổi", "Lương/buổi", "Thành tiền" };
+            // Sheet 2: Luong GV
+            var ws2 = wb.AddWorksheet("Luong giao vien");
+            var headers2 = new[] { "Giao vien", "Mon", "So buoi", "Luong/buoi", "Thanh tien" };
             for (int i = 0; i < headers2.Length; i++)
             {
                 ws2.Cell(1, i + 1).Value = headers2[i];
@@ -137,9 +206,9 @@ namespace ClassManager.API.Services
             }
             ws2.Columns().AdjustToContents();
 
-            // Sheet 3: Chi phí khác
-            var ws3 = wb.AddWorksheet("Chi phí khác");
-            var headers3 = new[] { "Khoản mục", "Số tiền", "Ngày", "Cố định", "Ghi chú" };
+            // Sheet 3: Chi phi khac
+            var ws3 = wb.AddWorksheet("Chi phi khac");
+            var headers3 = new[] { "Khoan muc", "So tien", "Ngay", "Co dinh", "Ghi chu" };
             for (int i = 0; i < headers3.Length; i++)
             {
                 ws3.Cell(1, i + 1).Value = headers3[i];
@@ -152,7 +221,7 @@ namespace ClassManager.API.Services
                 ws3.Cell(i + 2, 1).Value = e.Title;
                 ws3.Cell(i + 2, 2).Value = (double)e.Amount;
                 ws3.Cell(i + 2, 3).Value = e.ExpenseDate.ToString("dd/MM/yyyy");
-                ws3.Cell(i + 2, 4).Value = e.IsRecurring ? "Có" : "Không";
+                ws3.Cell(i + 2, 4).Value = e.IsRecurring ? "Co" : "Khong";
                 ws3.Cell(i + 2, 5).Value = e.Notes;
             }
             ws3.Columns().AdjustToContents();
@@ -162,29 +231,39 @@ namespace ClassManager.API.Services
             return ms.ToArray();
         }
 
-        // ── Helpers ──────────────────────────────────────────────────
+        // -- Helpers --
 
         private async Task<List<TeacherCostItem>> GetTeacherBreakdownAsync(int sm, int sy, int em, int ey)
         {
             var startDate = new DateTime(sy, sm, 1, 0, 0, 0, DateTimeKind.Utc);
             var endDate = new DateTime(ey, em, DateTime.DaysInMonth(ey, em), 23, 59, 59, DateTimeKind.Utc);
 
-            var teachers = await _db.Teachers
-                .Where(t => t.IsActive)
-                .Select(t => new
+            // Tính theo lớp: mỗi lớp có mức lương riêng
+            var classData = await _db.Classes
+                .Where(c => c.TeacherId != null && c.TeacherSalaryPerSession != null && c.TeacherSalaryPerSession > 0)
+                .Select(c => new
                 {
-                    t.Id,
-                    t.FullName,
-                    t.Subject,
-                    SalaryPerSession = t.SalaryPerSession ?? 0,
-                    SessionCount = t.Classes.SelectMany(c => c.Sessions)
-                        .Count(s => s.SessionDate >= startDate && s.SessionDate <= endDate)
+                    TeacherId = c.TeacherId!.Value,
+                    TeacherName = c.Teacher!.FullName,
+                    c.Subject,
+                    ClassName = c.Name,
+                    Salary = c.TeacherSalaryPerSession!.Value,
+                    SessionCount = c.Sessions.Count(s => s.SessionDate >= startDate && s.SessionDate <= endDate)
                 })
                 .ToListAsync();
 
-            return teachers
-                .Where(t => t.SessionCount > 0 || t.SalaryPerSession > 0)
-                .Select(t => new TeacherCostItem(t.Id, t.FullName, t.Subject, t.SessionCount, t.SalaryPerSession, t.SessionCount * t.SalaryPerSession))
+            // Nhóm theo GV để hiển thị tổng hợp (cộng dồn các lớp)
+            return classData
+                .Where(c => c.SessionCount > 0)
+                .GroupBy(c => new { c.TeacherId, c.TeacherName, c.Subject })
+                .Select(g => new TeacherCostItem(
+                    g.Key.TeacherId,
+                    g.Key.TeacherName,
+                    g.Key.Subject,
+                    g.Sum(c => c.SessionCount),
+                    0, // không còn lương cố định per GV
+                    g.Sum(c => c.SessionCount * c.Salary)
+                ))
                 .ToList();
         }
 
@@ -194,12 +273,10 @@ namespace ClassManager.API.Services
             var endDate = new DateTime(ey, em, DateTime.DaysInMonth(ey, em), 23, 59, 59, DateTimeKind.Utc);
             var monthCount = ((ey - sy) * 12) + (em - sm) + 1;
 
-            // Non-recurring expenses in range
             var nonRecurring = await _db.Expenses
                 .Where(e => !e.IsRecurring && e.ExpenseDate >= startDate && e.ExpenseDate <= endDate)
                 .SumAsync(e => (decimal?)e.Amount) ?? 0;
 
-            // Recurring expenses: amount × number of months in range
             var recurringMonthly = await _db.Expenses
                 .Where(e => e.IsRecurring)
                 .SumAsync(e => (decimal?)e.Amount) ?? 0;

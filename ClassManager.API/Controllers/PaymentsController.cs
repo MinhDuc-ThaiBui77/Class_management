@@ -22,11 +22,9 @@ namespace ClassManager.API.Controllers
             IsAdmin ? null : await _userSvc.GetTeacherIdByUserIdAsync(CurrentUserId);
 
         [HttpGet]
-        public async Task<IActionResult> GetMonthly([FromQuery] int month, [FromQuery] int year)
+        public async Task<IActionResult> GetAll()
         {
-            if (month < 1 || month > 12 || year < 2000)
-                return BadRequest(new { message = "Tháng/năm không hợp lệ." });
-            return Ok(await _svc.GetMonthlyStatusAsync(month, year, await CallerTeacherIdAsync()));
+            return Ok(await _svc.GetPaymentStatusAsync(await CallerTeacherIdAsync()));
         }
 
         [HttpPost]

@@ -2,15 +2,15 @@ namespace ClassManager.API.Models.DTOs
 {
     // ── Teacher ──────────────────────────────────────────────────────
 
-    public record TeacherRequest(string FullName, string Phone, string Email, string Subject, int? UserId, string Notes = "", decimal? SalaryPerSession = null);
+    public record TeacherRequest(string FullName, string Phone, string Email, string Subject, int? UserId, string Notes = "");
 
-    public record TeacherResponse(int Id, string FullName, string Phone, string Email, string Subject, string Notes, int ClassCount, int? UserId, string? UserEmail, decimal? SalaryPerSession = null);
+    public record TeacherResponse(int Id, string FullName, string Phone, string Email, string Subject, string Notes, int ClassCount, int? UserId, string? UserEmail);
 
     // ── Class ────────────────────────────────────────────────────────
 
-    public record ClassRequest(string Name, string Subject, int? TeacherId, string Notes = "", int? TotalSessions = null, decimal? TuitionFee = null, DateTime? StartDate = null);
+    public record ClassRequest(string Name, string Subject, int? TeacherId, string Notes = "", int? TotalSessions = null, decimal? TuitionFee = null, decimal? TeacherSalaryPerSession = null, DateTime? StartDate = null);
 
-    public record ClassResponse(int Id, string Name, string Subject, string Notes, int StudentCount, int? TeacherId, string? TeacherName, int? TotalSessions = null, decimal? TuitionFee = null, DateTime? StartDate = null);
+    public record ClassResponse(int Id, string Name, string Subject, string Notes, int StudentCount, int? TeacherId, string? TeacherName, int? TotalSessions = null, decimal? TuitionFee = null, decimal? TeacherSalaryPerSession = null, DateTime? StartDate = null);
 
     public record ClassStudentItem(int StudentId, string FullName, string Address, DateTime EnrolledDate);
 
@@ -58,7 +58,7 @@ namespace ClassManager.API.Models.DTOs
 
     // ── Attendance ───────────────────────────────────────────────────
 
-    public record AttendanceItem(int StudentId, string StudentName, string Status);
+    public record AttendanceItem(int StudentId, string StudentName, string Status, string Reason = "");
 
     public record SaveAttendanceRequest(int SessionId, List<AttendanceItem> Records);
 
@@ -86,22 +86,30 @@ namespace ClassManager.API.Models.DTOs
 
     // ── Payment ──────────────────────────────────────────────────────
 
-    public record PaymentRequest(int StudentId, decimal Amount, int MonthOf, int YearOf, string Notes = "");
+    public record PaymentRequest(int StudentId, int ClassId, decimal Amount, string Notes = "");
 
     public record PaymentStatusItem(
         int StudentId,
         string StudentName,
+        int ClassId,
+        string? ClassName,
+        string? Subject,
+        string? TeacherName,
+        string? ParentPhone,
+        decimal TuitionFee,
+        bool HasClass,
         bool IsPaid,
+        int? PaymentId,
         decimal Amount,
         DateTime? PaidDate,
         string Notes
     );
 
-    public record MonthlyPaymentResponse(
-        int Month,
-        int Year,
-        List<PaymentStatusItem> Students,
+    public record PaymentListResponse(
+        List<PaymentStatusItem> Items,
         decimal TotalCollected,
+        int TotalEnrollments,
+        int PaidCount,
         int UnpaidCount
     );
 
@@ -122,8 +130,9 @@ namespace ClassManager.API.Models.DTOs
         decimal ExpenseCost,
         decimal TotalCost,
         decimal Profit,
-        int TotalStudents,
-        int PaidStudents,
+        int TotalEnrollments,
+        int PaidEnrollments,
+        int NoClassStudents,
         decimal CollectionRate,
         List<TeacherCostItem> TeacherBreakdown,
         List<ExpenseResponse> ExpenseBreakdown

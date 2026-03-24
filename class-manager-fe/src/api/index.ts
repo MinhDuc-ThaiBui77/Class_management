@@ -113,9 +113,8 @@ export const importApi = {
 
 // ── Payments ──────────────────────────────────────────────────────
 export const paymentsApi = {
-  getMonthly: (month: number, year: number) =>
-    api.get('/payments', { params: { month, year } }),
-  record: (data: object) =>
+  getAll: () => api.get('/payments'),
+  record: (data: { studentId: number; classId: number; amount: number; notes?: string }) =>
     api.post('/payments', data),
   delete: (id: number) =>
     api.delete(`/payments/${id}`),

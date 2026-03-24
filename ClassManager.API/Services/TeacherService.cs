@@ -27,14 +27,14 @@ namespace ClassManager.API.Services
                 .OrderBy(t => t.FullName)
                 .Select(t => new TeacherResponse(
                     t.Id, t.FullName, t.Phone, t.Email, t.Subject, t.Notes,
-                    t.Classes.Count, t.UserId, t.User != null ? t.User.Email : null, t.SalaryPerSession))
+                    t.Classes.Count, t.UserId, t.User != null ? t.User.Email : null))
                 .ToListAsync();
         }
 
         public async Task<TeacherResponse?> GetByIdAsync(int id)
         {
             var t = await _db.Teachers.Include(t => t.Classes).Include(t => t.User).FirstOrDefaultAsync(t => t.Id == id);
-            return t == null ? null : new TeacherResponse(t.Id, t.FullName, t.Phone, t.Email, t.Subject, t.Notes, t.Classes.Count, t.UserId, t.User?.Email, t.SalaryPerSession);
+            return t == null ? null : new TeacherResponse(t.Id, t.FullName, t.Phone, t.Email, t.Subject, t.Notes, t.Classes.Count, t.UserId, t.User?.Email);
         }
 
         // Danh sách Users chưa được link với bất kỳ teacher nào (để chọn trong combobox)
@@ -58,14 +58,13 @@ namespace ClassManager.API.Services
                 Phone    = req.Phone.Trim(),
                 Email    = req.Email.Trim(),
                 Subject  = req.Subject,
-                Notes            = req.Notes.Trim(),
-                UserId           = req.UserId,
-                SalaryPerSession = req.SalaryPerSession,
+                Notes  = req.Notes.Trim(),
+                UserId = req.UserId,
             };
             _db.Teachers.Add(teacher);
             await _db.SaveChangesAsync();
             var userEmail = req.UserId.HasValue ? (await _db.Users.FindAsync(req.UserId.Value))?.Email : null;
-            return new TeacherResponse(teacher.Id, teacher.FullName, teacher.Phone, teacher.Email, teacher.Subject, teacher.Notes, 0, teacher.UserId, userEmail, teacher.SalaryPerSession);
+            return new TeacherResponse(teacher.Id, teacher.FullName, teacher.Phone, teacher.Email, teacher.Subject, teacher.Notes, 0, teacher.UserId, userEmail);
         }
 
         public async Task<TeacherResponse?> UpdateAsync(int id, TeacherRequest req)
@@ -78,12 +77,11 @@ namespace ClassManager.API.Services
             teacher.Phone    = req.Phone.Trim();
             teacher.Email    = req.Email.Trim();
             teacher.Subject  = req.Subject;
-            teacher.Notes            = req.Notes.Trim();
-            teacher.UserId           = req.UserId;
-            teacher.SalaryPerSession = req.SalaryPerSession ?? teacher.SalaryPerSession;
+            teacher.Notes  = req.Notes.Trim();
+            teacher.UserId = req.UserId;
             await _db.SaveChangesAsync();
             var userEmail = req.UserId.HasValue ? (await _db.Users.FindAsync(req.UserId.Value))?.Email : null;
-            return new TeacherResponse(teacher.Id, teacher.FullName, teacher.Phone, teacher.Email, teacher.Subject, teacher.Notes, teacher.Classes.Count, teacher.UserId, userEmail, teacher.SalaryPerSession);
+            return new TeacherResponse(teacher.Id, teacher.FullName, teacher.Phone, teacher.Email, teacher.Subject, teacher.Notes, teacher.Classes.Count, teacher.UserId, userEmail);
         }
 
         public async Task<bool> DeleteAsync(int id)

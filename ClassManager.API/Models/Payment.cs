@@ -4,14 +4,14 @@ namespace ClassManager.API.Models
     {
         public int Id { get; set; }
         public int StudentId { get; set; }
+        public int ClassId { get; set; }
         public decimal Amount { get; set; }
         public DateTime PaidDate { get; set; } = DateTime.UtcNow;
-        public int MonthOf { get; set; }
-        public int YearOf { get; set; }
         public string Notes { get; set; } = "";
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        // Navigation property
+        // Navigation properties
         public Student Student { get; set; } = null!;
+        public Class Class { get; set; } = null!;
     }
 }

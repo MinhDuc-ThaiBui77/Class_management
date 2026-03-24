@@ -21,7 +21,7 @@ namespace ClassManager.API.Services
                     c.Id, c.Name, c.Subject, c.Notes,
                     c.StudentClasses.Count(sc => sc.Student.IsActive),
                     c.TeacherId, c.Teacher != null ? c.Teacher.FullName : null,
-                    c.TotalSessions, c.TuitionFee, c.StartDate))
+                    c.TotalSessions, c.TuitionFee, c.TeacherSalaryPerSession, c.StartDate))
                 .ToListAsync();
         }
 
@@ -31,7 +31,7 @@ namespace ClassManager.API.Services
                 .Include(c => c.StudentClasses)
                 .Include(c => c.Teacher)
                 .FirstOrDefaultAsync(c => c.Id == id);
-            return c == null ? null : new ClassResponse(c.Id, c.Name, c.Subject, c.Notes, c.StudentClasses.Count(sc => sc.Student.IsActive), c.TeacherId, c.Teacher?.FullName, c.TotalSessions, c.TuitionFee, c.StartDate);
+            return c == null ? null : new ClassResponse(c.Id, c.Name, c.Subject, c.Notes, c.StudentClasses.Count(sc => sc.Student.IsActive), c.TeacherId, c.Teacher?.FullName, c.TotalSessions, c.TuitionFee, c.TeacherSalaryPerSession, c.StartDate);
         }
 
         public async Task<ClassResponse> CreateAsync(ClassRequest req)
@@ -43,16 +43,17 @@ namespace ClassManager.API.Services
                 Subject       = req.Subject.Trim(),
                 Notes         = req.Notes.Trim(),
                 TeacherId     = req.TeacherId,
-                TotalSessions = req.TotalSessions,
-                TuitionFee    = req.TuitionFee,
-                StartDate     = req.StartDate.HasValue ? DateTime.SpecifyKind(req.StartDate.Value, DateTimeKind.Utc) : null,
+                TotalSessions            = req.TotalSessions,
+                TuitionFee               = req.TuitionFee,
+                TeacherSalaryPerSession  = req.TeacherSalaryPerSession,
+                StartDate                = req.StartDate.HasValue ? DateTime.SpecifyKind(req.StartDate.Value, DateTimeKind.Utc) : null,
             };
             _db.Classes.Add(cls);
             await _db.SaveChangesAsync();
             var teacherName = req.TeacherId.HasValue
                 ? (await _db.Teachers.FindAsync(req.TeacherId.Value))?.FullName
                 : null;
-            return new ClassResponse(cls.Id, cls.Name, cls.Subject, cls.Notes, 0, cls.TeacherId, teacherName, cls.TotalSessions, cls.TuitionFee, cls.StartDate);
+            return new ClassResponse(cls.Id, cls.Name, cls.Subject, cls.Notes, 0, cls.TeacherId, teacherName, cls.TotalSessions, cls.TuitionFee, cls.TeacherSalaryPerSession, cls.StartDate);
         }
 
         public async Task<ClassResponse?> UpdateAsync(int id, ClassRequest req)
@@ -64,14 +65,15 @@ namespace ClassManager.API.Services
             cls.Subject       = req.Subject.Trim();
             cls.Notes         = req.Notes.Trim();
             cls.TeacherId     = req.TeacherId;
-            cls.TotalSessions = req.TotalSessions ?? cls.TotalSessions;
-            cls.TuitionFee    = req.TuitionFee ?? cls.TuitionFee;
-            cls.StartDate     = req.StartDate.HasValue ? DateTime.SpecifyKind(req.StartDate.Value, DateTimeKind.Utc) : cls.StartDate;
+            cls.TotalSessions           = req.TotalSessions ?? cls.TotalSessions;
+            cls.TuitionFee              = req.TuitionFee ?? cls.TuitionFee;
+            cls.TeacherSalaryPerSession = req.TeacherSalaryPerSession ?? cls.TeacherSalaryPerSession;
+            cls.StartDate               = req.StartDate.HasValue ? DateTime.SpecifyKind(req.StartDate.Value, DateTimeKind.Utc) : cls.StartDate;
             await _db.SaveChangesAsync();
             var teacherName = req.TeacherId.HasValue
                 ? (await _db.Teachers.FindAsync(req.TeacherId.Value))?.FullName
                 : null;
-            return new ClassResponse(cls.Id, cls.Name, cls.Subject, cls.Notes, cls.StudentClasses.Count, cls.TeacherId, teacherName, cls.TotalSessions, cls.TuitionFee, cls.StartDate);
+            return new ClassResponse(cls.Id, cls.Name, cls.Subject, cls.Notes, cls.StudentClasses.Count, cls.TeacherId, teacherName, cls.TotalSessions, cls.TuitionFee, cls.TeacherSalaryPerSession, cls.StartDate);
         }
 
         public async Task<bool> DeleteAsync(int id)

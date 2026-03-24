@@ -34,9 +34,9 @@ namespace ClassManager.API.Data
                 .HasIndex(a => new { a.StudentId, a.SessionId })
                 .IsUnique();
 
-            // Payment: mỗi học sinh chỉ đóng 1 lần cho mỗi tháng/năm
+            // Payment: mỗi học sinh chỉ đóng 1 lần cho mỗi lớp
             modelBuilder.Entity<Payment>()
-                .HasIndex(p => new { p.StudentId, p.MonthOf, p.YearOf })
+                .HasIndex(p => new { p.StudentId, p.ClassId })
                 .IsUnique();
 
             // Decimal precision cho Amount
@@ -48,8 +48,8 @@ namespace ClassManager.API.Data
                 .Property(e => e.Amount)
                 .HasPrecision(12, 2);
 
-            modelBuilder.Entity<Teacher>()
-                .Property(t => t.SalaryPerSession)
+            modelBuilder.Entity<Class>()
+                .Property(c => c.TeacherSalaryPerSession)
                 .HasPrecision(12, 2);
         }
     }

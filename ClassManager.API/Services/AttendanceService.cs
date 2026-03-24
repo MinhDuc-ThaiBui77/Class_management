@@ -68,13 +68,13 @@ namespace ClassManager.API.Services
 
             var existing = await _db.Attendances
                 .Where(a => a.SessionId == sessionId)
-                .ToDictionaryAsync(a => a.StudentId, a => a.Status);
+                .ToDictionaryAsync(a => a.StudentId, a => new { a.Status, a.Reason });
 
-            return students.Select(s => new AttendanceItem(
-                s.Id,
-                s.FullName,
-                existing.TryGetValue(s.Id, out var status) ? status : "Present"
-            )).ToList();
+            return students.Select(s =>
+            {
+                var has = existing.TryGetValue(s.Id, out var att);
+                return new AttendanceItem(s.Id, s.FullName, has ? att.Status : "Present", has ? att.Reason : "");
+            }).ToList();
         }
 
         // Lưu toàn bộ điểm danh 1 buổi (xóa cũ, insert mới)
@@ -90,6 +90,7 @@ namespace ClassManager.API.Services
                 StudentId = r.StudentId,
                 SessionId = req.SessionId,
                 Status    = r.Status,
+                Reason    = r.Reason,
             });
             _db.Attendances.AddRange(newRecords);
             await _db.SaveChangesAsync();

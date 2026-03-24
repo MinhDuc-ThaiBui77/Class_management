@@ -8,6 +8,7 @@ namespace ClassManager.API.Models
         public string Notes { get; set; } = "";
         public int? TotalSessions { get; set; }
         public decimal? TuitionFee { get; set; }
+        public decimal? TeacherSalaryPerSession { get; set; }
         public DateTime? StartDate { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

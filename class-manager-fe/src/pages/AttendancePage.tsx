@@ -21,6 +21,7 @@ interface AttendanceItem {
   studentId: number
   studentName: string
   status: string
+  reason: string
 }
 
 export default function AttendancePage() {
@@ -32,7 +33,7 @@ export default function AttendancePage() {
   const [newClassId, setNewClassId] = useState<number | ''>('')
   const [newTopic, setNewTopic] = useState('')
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10))
-  const [saved, setSaved] = useState(false)
+  const [savingId, setSavingId] = useState<number | null>(null)
   const [sessionError, setSessionError] = useState('')
 
   useEffect(() => {
@@ -47,7 +48,6 @@ export default function AttendancePage() {
 
   const selectSession = async (s: Session) => {
     setSelected(s)
-    setSaved(false)
     const res = await attendanceApi.getForSession(s.id)
     setRecords(res.data)
   }
@@ -76,13 +76,38 @@ export default function AttendancePage() {
   }
 
   const setStatus = (studentId: number, status: string) => {
-    setRecords(r => r.map(x => x.studentId === studentId ? { ...x, status } : x))
+    setRecords(r => r.map(x => {
+      if (x.studentId !== studentId) return x
+      // Nếu chuyển sang Present thì xóa lý do
+      const reason = status === 'Present' ? '' : x.reason
+      return { ...x, status, reason }
+    }))
+    // Auto-save khi click trạng thái
+    autoSave(studentId, status)
   }
 
-  const handleSave = async () => {
+  const autoSave = async (changedStudentId?: number, changedStatus?: string) => {
     if (!selected) return
-    await attendanceApi.save(selected.id, records)
-    setSaved(true)
+    setSavingId(changedStudentId ?? null)
+    // Dùng records mới nhất
+    const currentRecords = records.map(r =>
+      r.studentId === changedStudentId
+        ? { ...r, status: changedStatus ?? r.status, reason: (changedStatus === 'Present' ? '' : r.reason) }
+        : r
+    )
+    await attendanceApi.save(selected.id, currentRecords)
+    setSavingId(null)
+  }
+
+  const saveReason = async (studentId: number, reason: string) => {
+    if (!selected) return
+    setRecords(r => r.map(x => x.studentId === studentId ? { ...x, reason } : x))
+    setSavingId(studentId)
+    const currentRecords = records.map(r =>
+      r.studentId === studentId ? { ...r, reason } : r
+    )
+    await attendanceApi.save(selected.id, currentRecords)
+    setSavingId(null)
   }
 
   const statusColor = (s: string) =>
@@ -174,20 +199,12 @@ export default function AttendancePage() {
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <div className="text-xs font-medium text-blue-600 mb-0.5">{selected.className} · {selected.subject}</div>
-                <h3 className="font-semibold text-gray-800">{selected.topic}</h3>
-                <p className="text-sm text-gray-400">
-                  {new Date(selected.sessionDate).toLocaleDateString('vi-VN')} · {records.length} học sinh
-                </p>
-              </div>
-              <button
-                onClick={handleSave}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
-              >
-                {saved ? '✓ Đã lưu' : 'Lưu điểm danh'}
-              </button>
+            <div className="mb-4">
+              <div className="text-xs font-medium text-blue-600 mb-0.5">{selected.className} · {selected.subject}</div>
+              <h3 className="font-semibold text-gray-800">{selected.topic}</h3>
+              <p className="text-sm text-gray-400">
+                {new Date(selected.sessionDate).toLocaleDateString('vi-VN')} · {records.length} học sinh
+              </p>
             </div>
 
             <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -196,6 +213,7 @@ export default function AttendancePage() {
                   <tr>
                     <th className="px-4 py-3 text-left">Học sinh</th>
                     <th className="px-4 py-3 text-left">Trạng thái</th>
+                    <th className="px-4 py-3 text-left">Lý do</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -219,11 +237,38 @@ export default function AttendancePage() {
                           ))}
                         </div>
                       </td>
+                      <td className="px-4 py-3">
+                        {r.status !== 'Present' ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="Nhập lý do..."
+                              defaultValue={r.reason}
+                              onBlur={e => {
+                                if (e.target.value !== r.reason) saveReason(r.studentId, e.target.value)
+                              }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  const val = (e.target as HTMLInputElement).value
+                                  if (val !== r.reason) saveReason(r.studentId, val)
+                                }
+                              }}
+                              className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            {savingId === r.studentId && (
+                              <span className="text-green-500 text-xs">✓</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {records.length === 0 && (
                     <tr>
-                      <td colSpan={2} className="px-4 py-8 text-center text-gray-400">
+                      <td colSpan={3} className="px-4 py-8 text-center text-gray-400">
                         Lớp này chưa có học sinh nào
                       </td>
                     </tr>

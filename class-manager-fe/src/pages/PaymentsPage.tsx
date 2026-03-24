@@ -1,47 +1,69 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { paymentsApi } from '../api'
 import { useAuth } from '../hooks/useAuth'
 
 interface PaymentStatusItem {
   studentId: number
   studentName: string
+  classId: number
+  className: string | null
+  subject: string | null
+  teacherName: string | null
+  parentPhone: string | null
+  tuitionFee: number
+  hasClass: boolean
   isPaid: boolean
+  paymentId: number | null
   amount: number
   paidDate: string | null
   notes: string
 }
 
-interface MonthlyData {
-  month: number
-  year: number
-  students: PaymentStatusItem[]
+interface PaymentData {
+  items: PaymentStatusItem[]
   totalCollected: number
+  totalEnrollments: number
+  paidCount: number
   unpaidCount: number
 }
 
 export default function PaymentsPage() {
   const { isAdmin } = useAuth()
-  const today = new Date()
-  const [month, setMonth] = useState(today.getMonth() + 1)
-  const [year, setYear] = useState(today.getFullYear())
-  const [data, setData] = useState<MonthlyData | null>(null)
+  const [data, setData] = useState<PaymentData | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const [selectedStudent, setSelectedStudent] = useState<PaymentStatusItem | null>(null)
-  const [amount, setAmount] = useState('500000')
+  const [selected, setSelected] = useState<PaymentStatusItem | null>(null)
+  const [amount, setAmount] = useState('')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
+  const [infoId, setInfoId] = useState<string | null>(null)
+  const [infoAbove, setInfoAbove] = useState(false)
+  const infoRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { loadData() }, [month, year])
+  // Filters
+  const [filterName, setFilterName] = useState('')
+  const [filterClass, setFilterClass] = useState('')
+  const [filterStatus, setFilterStatus] = useState<'' | 'paid' | 'unpaid' | 'noclass'>('')
+  const [filterDate, setFilterDate] = useState('')
+
+  useEffect(() => { loadData() }, [])
+
+  // Close info popover on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (infoRef.current && !infoRef.current.contains(e.target as Node)) setInfoId(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const loadData = async () => {
-    const res = await paymentsApi.getMonthly(month, year)
+    const res = await paymentsApi.getAll()
     setData(res.data)
   }
 
   const openRecord = (s: PaymentStatusItem) => {
-    if (s.isPaid) return
-    setSelectedStudent(s)
-    setAmount('500000')
+    setSelected(s)
+    setAmount(s.tuitionFee > 0 ? String(s.tuitionFee) : '500000')
     setNotes('')
     setError('')
     setShowForm(true)
@@ -49,14 +71,13 @@ export default function PaymentsPage() {
 
   const handleRecord = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedStudent) return
+    if (!selected) return
     setError('')
     try {
       await paymentsApi.record({
-        studentId: selectedStudent.studentId,
+        studentId: selected.studentId,
+        classId: selected.classId,
         amount: Number(amount),
-        monthOf: month,
-        yearOf: year,
         notes,
       })
       setShowForm(false)
@@ -65,6 +86,27 @@ export default function PaymentsPage() {
       setError(err.response?.data?.message ?? 'Có lỗi xảy ra.')
     }
   }
+
+  const itemKey = (s: PaymentStatusItem) => `${s.studentId}-${s.classId}`
+
+  // Unique class list for filter dropdown
+  const classList = data ? [...new Set(data.items.filter(i => i.hasClass).map(i => `${i.className} ${i.subject}`))] : []
+
+  // Apply filters
+  const filteredItems = data?.items.filter(s => {
+    if (filterName && !s.studentName.toLowerCase().includes(filterName.toLowerCase())) return false
+    if (filterClass && `${s.className} ${s.subject}` !== filterClass) return false
+    if (filterStatus === 'paid' && !s.isPaid) return false
+    if (filterStatus === 'unpaid' && (!s.hasClass || s.isPaid)) return false
+    if (filterStatus === 'noclass' && s.hasClass) return false
+    if (filterDate && s.paidDate) {
+      const paid = new Date(s.paidDate).toISOString().slice(0, 10)
+      if (paid !== filterDate) return false
+    } else if (filterDate && !s.paidDate) {
+      return false
+    }
+    return true
+  }) ?? []
 
   return (
     <div>
@@ -78,32 +120,54 @@ export default function PaymentsPage() {
                 {data.totalCollected.toLocaleString('vi-VN')} ₫
               </span>
               {' · '}
-              Chưa đóng: <span className="text-red-500 font-medium">{data.unpaidCount} học sinh</span>
+              Chưa đóng: <span className="text-red-500 font-medium">{data.unpaidCount} lượt</span>
+              {' · '}
+              Tổng: <span className="text-gray-600 font-medium">{data.totalEnrollments} lượt đăng ký</span>
             </p>
           )}
         </div>
+      </div>
 
-        {/* Month/Year picker */}
-        <div className="flex items-center gap-2">
-          <select
-            value={month}
-            onChange={e => setMonth(Number(e.target.value))}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
-          >
-            {Array.from({ length: 12 }, (_, i) => (
-              <option key={i + 1} value={i + 1}>Tháng {i + 1}</option>
-            ))}
-          </select>
-          <select
-            value={year}
-            onChange={e => setYear(Number(e.target.value))}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
-          >
-            {[2024, 2025, 2026, 2027].map(y => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-        </div>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <input
+          type="text"
+          placeholder="Tìm học sinh..."
+          value={filterName}
+          onChange={e => setFilterName(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+        />
+        <select
+          value={filterClass}
+          onChange={e => setFilterClass(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
+        >
+          <option value="">Tất cả lớp</option>
+          {classList.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select
+          value={filterStatus}
+          onChange={e => setFilterStatus(e.target.value as any)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
+        >
+          <option value="">Tất cả trạng thái</option>
+          <option value="paid">Đã đóng</option>
+          <option value="unpaid">Chưa đóng</option>
+          <option value="noclass">Chưa có lớp</option>
+        </select>
+        <input
+          type="date"
+          value={filterDate}
+          onChange={e => setFilterDate(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
+        />
+        {(filterName || filterClass || filterStatus || filterDate) && (
+          <button
+            onClick={() => { setFilterName(''); setFilterClass(''); setFilterStatus(''); setFilterDate('') }}
+            className="text-gray-400 hover:text-gray-600 text-sm"
+          >Xóa bộ lọc</button>
+        )}
+        <span className="text-xs text-gray-400 ml-auto">{filteredItems.length} kết quả</span>
       </div>
 
       {/* Table */}
@@ -112,33 +176,47 @@ export default function PaymentsPage() {
           <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
             <tr>
               <th className="px-4 py-3 text-left">Học sinh</th>
+              <th className="px-4 py-3 text-left">Lớp</th>
               <th className="px-4 py-3 text-left">Trạng thái</th>
               <th className="px-4 py-3 text-left">Số tiền</th>
               <th className="px-4 py-3 text-left">Ngày đóng</th>
               <th className="px-4 py-3 text-left">Ghi chú</th>
-              <th className="px-4 py-3"></th>
+              <th className="px-4 py-3 w-16"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {data?.students.map(s => (
-              <tr key={s.studentId} className={`transition ${s.isPaid ? 'bg-green-50/30' : 'bg-red-50/30'}`}>
+            {filteredItems.map(s => (
+              <tr key={itemKey(s)} className={`transition ${
+                !s.hasClass ? 'bg-gray-50/50' : s.isPaid ? 'bg-green-50/30' : 'bg-red-50/30'
+              }`}>
                 <td className="px-4 py-3 font-medium text-gray-800">{s.studentName}</td>
+                <td className="px-4 py-3 text-gray-600">
+                  {s.hasClass ? (
+                    <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+                      {s.className} {s.subject}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400 text-xs">—</span>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    s.isPaid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+                    !s.hasClass ? 'bg-gray-100 text-gray-500'
+                    : s.isPaid ? 'bg-green-100 text-green-700'
+                    : 'bg-red-100 text-red-600'
                   }`}>
-                    {s.isPaid ? 'Đã đóng' : 'Chưa đóng'}
+                    {!s.hasClass ? 'Chưa có lớp' : s.isPaid ? 'Đã đóng' : 'Chưa đóng'}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-gray-600">
-                  {s.isPaid ? `${s.amount.toLocaleString('vi-VN')} ₫` : '—'}
+                  {s.isPaid ? `${s.amount.toLocaleString('vi-VN')} ₫` : s.tuitionFee > 0 ? `${s.tuitionFee.toLocaleString('vi-VN')} ₫` : '—'}
                 </td>
                 <td className="px-4 py-3 text-gray-500">
                   {s.paidDate ? new Date(s.paidDate).toLocaleDateString('vi-VN') : '—'}
                 </td>
-                <td className="px-4 py-3 text-gray-400">{s.notes}</td>
-                <td className="px-4 py-3 text-right">
-                  {isAdmin && !s.isPaid && (
+                <td className="px-4 py-3 text-gray-400 max-w-[120px] truncate">{s.notes || '—'}</td>
+                <td className="px-4 py-3 text-right flex items-center justify-end gap-2">
+                  {isAdmin && !s.isPaid && s.hasClass && (
                     <button
                       onClick={() => openRecord(s)}
                       className="text-blue-500 hover:text-blue-700 text-xs font-medium"
@@ -146,13 +224,55 @@ export default function PaymentsPage() {
                       Ghi nhận
                     </button>
                   )}
+                  {/* Info icon */}
+                  <div className="relative" ref={infoId === itemKey(s) ? infoRef : undefined}>
+                    <button
+                      onClick={(e) => {
+                        const key = itemKey(s)
+                        if (infoId === key) { setInfoId(null); return }
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        setInfoAbove(rect.bottom + 140 > window.innerHeight)
+                        setInfoId(key)
+                      }}
+                      className="text-gray-400 hover:text-gray-600 transition"
+                      title="Thông tin chi tiết"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </button>
+                    {infoId === itemKey(s) && (
+                      <div className={`absolute right-0 ${infoAbove ? 'bottom-6' : 'top-6'} bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-50 w-56 text-xs`}>
+                        <div className="space-y-1.5">
+                          <div>
+                            <span className="text-gray-400">Giáo viên:</span>{' '}
+                            <span className="text-gray-700 font-medium">{s.teacherName || 'Chưa có'}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">Lớp:</span>{' '}
+                            <span className="text-gray-700 font-medium">{s.className} {s.subject}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">Học phí lớp:</span>{' '}
+                            <span className="text-gray-700 font-medium">
+                              {s.tuitionFee > 0 ? `${s.tuitionFee.toLocaleString('vi-VN')} ₫` : 'Chưa thiết lập'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">SĐT phụ huynh:</span>{' '}
+                            <span className="text-gray-700 font-medium">{s.parentPhone || '—'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
-            {(!data || data.students.length === 0) && (
+            {filteredItems.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
-                  Chưa có dữ liệu
+                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                  Chưa có dữ liệu (học sinh cần được xếp lớp trước)
                 </td>
               </tr>
             )}
@@ -161,12 +281,12 @@ export default function PaymentsPage() {
       </div>
 
       {/* Modal ghi nhận */}
-      {showForm && selectedStudent && (
+      {showForm && selected && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
             <h3 className="font-semibold text-gray-800 mb-1">Ghi nhận học phí</h3>
             <p className="text-sm text-gray-400 mb-4">
-              {selectedStudent.studentName} · Tháng {month}/{year}
+              {selected.studentName} · {selected.className} {selected.subject}
             </p>
             <form onSubmit={handleRecord} className="space-y-3">
               <div>

@@ -91,12 +91,22 @@ using (var scope = app.Services.CreateScope())
             ) THEN
                 ALTER TABLE "Classes" ADD COLUMN "TuitionFee" numeric(12,2);
             END IF;
-            -- Thêm SalaryPerSession vào Teachers (nếu chưa có)
+            -- Chuyển SalaryPerSession từ Teachers sang Classes (TeacherSalaryPerSession)
             IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Classes' AND column_name = 'TeacherSalaryPerSession'
+            ) THEN
+                ALTER TABLE "Classes" ADD COLUMN "TeacherSalaryPerSession" numeric(12,2);
+                -- Copy salary từ Teacher sang các lớp của GV đó
+                UPDATE "Classes" c SET "TeacherSalaryPerSession" = t."SalaryPerSession"
+                FROM "Teachers" t WHERE c."TeacherId" = t."Id" AND t."SalaryPerSession" IS NOT NULL;
+            END IF;
+            -- Drop SalaryPerSession cũ từ Teachers (nếu còn)
+            IF EXISTS (
                 SELECT 1 FROM information_schema.columns
                 WHERE table_name = 'Teachers' AND column_name = 'SalaryPerSession'
             ) THEN
-                ALTER TABLE "Teachers" ADD COLUMN "SalaryPerSession" numeric(12,2);
+                ALTER TABLE "Teachers" DROP COLUMN "SalaryPerSession";
             END IF;
             -- Tạo bảng Expenses (nếu chưa có)
             IF NOT EXISTS (
@@ -112,6 +122,37 @@ using (var scope = app.Services.CreateScope())
                     "Notes" text NOT NULL DEFAULT '',
                     "CreatedAt" timestamp with time zone NOT NULL DEFAULT now()
                 );
+            END IF;
+
+            -- Xóa payment rác (ClassId=0, từ data cũ trước khi migrate)
+            DELETE FROM "Payments" WHERE "ClassId" = 0;
+
+            -- Thêm Reason vào Attendances (nếu chưa có)
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Attendances' AND column_name = 'Reason'
+            ) THEN
+                ALTER TABLE "Attendances" ADD COLUMN "Reason" text NOT NULL DEFAULT '';
+            END IF;
+
+            -- Chuyển Payment từ theo tháng sang theo lớp
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Payments' AND column_name = 'MonthOf'
+            ) THEN
+                -- Xóa payment cũ (model cũ không tương thích)
+                DELETE FROM "Payments";
+                -- Drop index cũ
+                DROP INDEX IF EXISTS "IX_Payments_StudentId_MonthOf_YearOf";
+                -- Drop cột cũ
+                ALTER TABLE "Payments" DROP COLUMN "MonthOf";
+                ALTER TABLE "Payments" DROP COLUMN "YearOf";
+                -- Thêm ClassId
+                ALTER TABLE "Payments" ADD COLUMN "ClassId" integer NOT NULL DEFAULT 0;
+                ALTER TABLE "Payments" ADD CONSTRAINT "FK_Payments_Classes_ClassId"
+                    FOREIGN KEY ("ClassId") REFERENCES "Classes"("Id") ON DELETE CASCADE;
+                CREATE UNIQUE INDEX "IX_Payments_StudentId_ClassId"
+                    ON "Payments" ("StudentId", "ClassId");
             END IF;
         END $$;
         """);
