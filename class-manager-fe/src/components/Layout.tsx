@@ -5,7 +5,7 @@ const navItems = [
   { to: '/students',   label: 'Học sinh',   adminOnly: false },
   { to: '/teachers',   label: 'Giáo viên',  adminOnly: false },
   { to: '/classes',    label: 'Lớp học',    adminOnly: false },
-  { to: '/attendance', label: 'Điểm danh',  adminOnly: false },
+  { to: '/attendance', label: 'Điểm danh & Lịch dạy', adminOnly: false },
   { to: '/payments',   label: 'Học phí',    adminOnly: false },
   { to: '/reports',    label: 'Báo cáo',    adminOnly: true  },
   { to: '/accounts',   label: 'Tài khoản',  adminOnly: true  },

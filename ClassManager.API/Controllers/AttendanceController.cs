@@ -22,16 +22,21 @@ namespace ClassManager.API.Controllers
             IsAdmin ? null : await _userSvc.GetTeacherIdByUserIdAsync(CurrentUserId);
 
         [HttpGet("sessions")]
-        public async Task<IActionResult> GetSessions()
-            => Ok(await _svc.GetAllSessionsAsync(await CallerTeacherIdAsync()));
+        public async Task<IActionResult> GetSessions([FromQuery] string? week = null)
+        {
+            var teacherId = await CallerTeacherIdAsync();
+            if (week != null && DateTime.TryParse(week, out var weekStart))
+                return Ok(await _svc.GetSessionsByWeekAsync(weekStart, teacherId));
+            return Ok(await _svc.GetAllSessionsAsync(teacherId));
+        }
 
         [HttpPost("sessions")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> CreateSession(SessionRequest req)
         {
             try
             {
-                var teacherId = await CallerTeacherIdAsync();
-                var s = await _svc.CreateSessionAsync(req, teacherId);
+                var s = await _svc.CreateSessionAsync(req);
                 return Ok(s);
             }
             catch (InvalidOperationException ex)
@@ -41,10 +46,26 @@ namespace ClassManager.API.Controllers
         }
 
         [HttpDelete("sessions/{id}")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> DeleteSession(int id)
         {
             var ok = await _svc.DeleteSessionAsync(id);
             return ok ? NoContent() : NotFound();
+        }
+
+        [HttpPut("sessions/{id}/topic")]
+        public async Task<IActionResult> UpdateTopic(int id, UpdateTopicRequest req)
+        {
+            try
+            {
+                var teacherId = await CallerTeacherIdAsync();
+                var result = await _svc.UpdateTopicAsync(id, req.Topic, teacherId);
+                return result != null ? Ok(result) : NotFound();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpGet("sessions/{sessionId}")]

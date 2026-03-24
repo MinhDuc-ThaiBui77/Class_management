@@ -5,43 +5,100 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClassManager.API.Services
 {
+    public static class RoomList
+    {
+        public static readonly string[] Valid = ["Phòng 1", "Phòng 2", "Phòng 3", "Phòng 4", "Phòng 5"];
+    }
+
+    public static class TimeSlotList
+    {
+        public static readonly string[] Valid = ["Sáng", "Chiều", "Tối"];
+    }
+
     public class AttendanceService
     {
         private readonly AppDbContext _db;
         public AttendanceService(AppDbContext db) => _db = db;
 
+        private static SessionResponse MapSession(Session s) => new(
+            s.Id, s.ClassId, s.Class.Name, s.Class.Subject,
+            s.Class.Teacher?.FullName,
+            s.SessionDate, s.Room, s.TimeSlot, s.Topic, s.Notes);
+
+        public async Task<List<SessionResponse>> GetSessionsByWeekAsync(DateTime weekStart, int? teacherId = null)
+        {
+            var start = DateTime.SpecifyKind(weekStart.Date, DateTimeKind.Utc);
+            var end = start.AddDays(7);
+
+            var query = _db.Sessions
+                .Include(s => s.Class).ThenInclude(c => c.Teacher)
+                .Where(s => s.SessionDate >= start && s.SessionDate < end);
+
+            if (teacherId.HasValue)
+                query = query.Where(s => s.Class.TeacherId == teacherId.Value);
+
+            return await query
+                .OrderBy(s => s.SessionDate).ThenBy(s => s.Room).ThenBy(s => s.TimeSlot)
+                .Select(s => MapSession(s))
+                .ToListAsync();
+        }
+
         public async Task<List<SessionResponse>> GetAllSessionsAsync(int? teacherId = null)
         {
-            var query = _db.Sessions.Include(s => s.Class).AsQueryable();
+            var query = _db.Sessions.Include(s => s.Class).ThenInclude(c => c.Teacher).AsQueryable();
             if (teacherId.HasValue)
                 query = query.Where(s => s.Class.TeacherId == teacherId.Value);
             return await query
                 .OrderByDescending(s => s.SessionDate)
-                .Select(s => new SessionResponse(s.Id, s.ClassId, s.Class.Name, s.Class.Subject, s.SessionDate, s.Topic, s.Notes))
+                .Select(s => MapSession(s))
                 .ToListAsync();
         }
 
         public async Task<SessionResponse> CreateSessionAsync(SessionRequest req, int? callerTeacherId = null)
         {
-            if (string.IsNullOrWhiteSpace(req.Topic))
-                throw new InvalidOperationException("Chủ đề buổi học không được để trống.");
+            // Validate
+            if (!RoomList.Valid.Contains(req.Room))
+                throw new InvalidOperationException($"Phòng không hợp lệ. Chọn: {string.Join(", ", RoomList.Valid)}");
+            if (!TimeSlotList.Valid.Contains(req.TimeSlot))
+                throw new InvalidOperationException($"Ca học không hợp lệ. Chọn: {string.Join(", ", TimeSlotList.Valid)}");
 
-            var cls = await _db.Classes.FindAsync(req.ClassId)
+            var cls = await _db.Classes.Include(c => c.Teacher).FirstOrDefaultAsync(c => c.Id == req.ClassId)
                 ?? throw new InvalidOperationException("Lớp học không tồn tại.");
 
             if (callerTeacherId.HasValue && cls.TeacherId != callerTeacherId.Value)
                 throw new InvalidOperationException("Bạn chỉ có thể tạo buổi học cho lớp của mình.");
 
+            // Conflict check
+            var sessionDate = DateTime.SpecifyKind(req.SessionDate.Date, DateTimeKind.Utc);
+            var conflict = await _db.Sessions
+                .Include(s => s.Class).ThenInclude(c => c.Teacher)
+                .FirstOrDefaultAsync(s =>
+                    s.SessionDate == sessionDate &&
+                    s.Room == req.Room &&
+                    s.TimeSlot == req.TimeSlot);
+
+            if (conflict != null)
+            {
+                var conflictTeacher = conflict.Class.Teacher?.FullName ?? "Chưa có GV";
+                throw new InvalidOperationException(
+                    $"{req.Room} ca {req.TimeSlot} ngày {sessionDate:dd/MM/yyyy} đã có lịch: " +
+                    $"{conflict.Class.Name} {conflict.Class.Subject} - {conflictTeacher}");
+            }
+
             var session = new Session
             {
                 ClassId     = req.ClassId,
-                SessionDate = DateTime.SpecifyKind(req.SessionDate, DateTimeKind.Utc),
+                SessionDate = sessionDate,
+                Room        = req.Room,
+                TimeSlot    = req.TimeSlot,
                 Topic       = req.Topic.Trim(),
                 Notes       = req.Notes.Trim(),
             };
             _db.Sessions.Add(session);
             await _db.SaveChangesAsync();
-            return new SessionResponse(session.Id, session.ClassId, cls.Name, cls.Subject, session.SessionDate, session.Topic, session.Notes);
+
+            return new SessionResponse(session.Id, session.ClassId, cls.Name, cls.Subject,
+                cls.Teacher?.FullName, session.SessionDate, session.Room, session.TimeSlot, session.Topic, session.Notes);
         }
 
         public async Task<bool> DeleteSessionAsync(int id)
@@ -53,7 +110,20 @@ namespace ClassManager.API.Services
             return true;
         }
 
-        // Lấy danh sách học sinh trong lớp của buổi học + trạng thái điểm danh
+        public async Task<SessionResponse?> UpdateTopicAsync(int sessionId, string topic, int? callerTeacherId = null)
+        {
+            var session = await _db.Sessions.Include(s => s.Class).ThenInclude(c => c.Teacher)
+                .FirstOrDefaultAsync(s => s.Id == sessionId);
+            if (session == null) return null;
+
+            if (callerTeacherId.HasValue && session.Class.TeacherId != callerTeacherId.Value)
+                throw new InvalidOperationException("Bạn chỉ có thể sửa nội dung buổi dạy của lớp mình.");
+
+            session.Topic = topic.Trim();
+            await _db.SaveChangesAsync();
+            return MapSession(session);
+        }
+
         public async Task<List<AttendanceItem>> GetAttendanceForSessionAsync(int sessionId)
         {
             var session = await _db.Sessions.FindAsync(sessionId)
@@ -77,7 +147,6 @@ namespace ClassManager.API.Services
             }).ToList();
         }
 
-        // Lưu toàn bộ điểm danh 1 buổi (xóa cũ, insert mới)
         public async Task SaveAttendanceAsync(SaveAttendanceRequest req)
         {
             var existing = await _db.Attendances
