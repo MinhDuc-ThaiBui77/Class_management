@@ -37,6 +37,7 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
   const [result, setResult]       = useState<ImportResult | null>(null)
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState('')
+  const [showTemplate, setShowTemplate] = useState(false)
 
   // Bước chọn lớp (chỉ dành cho mode='students')
   const [classes, setClasses]           = useState<ClassOption[]>([])
@@ -81,16 +82,6 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
       setPreview(parsed)
     }
     reader.readAsArrayBuffer(f)
-  }
-
-  const handleDownloadTemplate = async () => {
-    const res = await importApi.downloadTemplate()
-    const url = URL.createObjectURL(new Blob([res.data]))
-    const a   = document.createElement('a')
-    a.href     = url
-    a.download = 'template-hoc-sinh.xlsx'
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   const handleImport = async () => {
@@ -196,15 +187,47 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
                   Chọn file .xlsx
                 </button>
                 <button
-                  onClick={handleDownloadTemplate}
+                  onClick={() => setShowTemplate(v => !v)}
                   className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 transition"
                 >
-                  Tải file mẫu
+                  {showTemplate ? 'Ẩn file mẫu' : 'Xem file mẫu'}
                 </button>
                 {file && <span className="text-sm text-gray-500 truncate max-w-xs">{file.name}</span>}
                 <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={handleFileChange} />
               </div>
             </div>
+
+            {showTemplate && (
+              <div className="mb-4 border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">File mẫu — 3 cột bắt buộc (hàng 1 là tiêu đề, dữ liệu từ hàng 2)</div>
+                <table className="w-full text-xs">
+                  <thead className="bg-green-50 text-green-800">
+                    <tr>
+                      <th className="px-3 py-2 text-left border-r border-green-100">A: Họ tên *</th>
+                      <th className="px-3 py-2 text-left border-r border-green-100">B: Địa chỉ</th>
+                      <th className="px-3 py-2 text-left">C: SĐT phụ huynh</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-gray-600">
+                    <tr>
+                      <td className="px-3 py-1.5 border-r border-gray-100">Nguyễn Văn A</td>
+                      <td className="px-3 py-1.5 border-r border-gray-100">123 Trần Hưng Đạo, Q.1</td>
+                      <td className="px-3 py-1.5">0901234567</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-1.5 border-r border-gray-100">Trần Thị B</td>
+                      <td className="px-3 py-1.5 border-r border-gray-100">456 Lê Lợi, Q.3</td>
+                      <td className="px-3 py-1.5">0912345678</td>
+                    </tr>
+                    <tr className="text-gray-400 italic">
+                      <td className="px-3 py-1.5 border-r border-gray-100">...</td>
+                      <td className="px-3 py-1.5 border-r border-gray-100">...</td>
+                      <td className="px-3 py-1.5">...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
 

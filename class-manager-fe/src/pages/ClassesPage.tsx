@@ -184,40 +184,64 @@ export default function ClassesPage() {
           )}
         </div>
 
-        <div className="space-y-2">
-          {classes.map(cls => (
-            <div
-              key={cls.id}
-              onClick={() => selectClass(cls)}
-              className={`rounded-xl px-4 py-3 cursor-pointer border transition group ${
-                selected?.id === cls.id
-                  ? 'bg-blue-50 border-blue-200'
-                  : 'bg-white border-gray-100 hover:border-gray-200'
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-medium text-gray-800 text-sm">
-                    {cls.name} <span className="text-blue-600">· {cls.subject}</span>
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">{cls.studentCount} học sinh · {cls.teacherName ?? 'Chưa có GV'}</p>
+        <div className="space-y-3">
+          {(() => {
+            // Nhóm lớp theo khối
+            const groups: Record<string, typeof classes> = {}
+            classes.forEach(cls => {
+              const m = cls.name.match(/^(\d+)/)
+              const num = m ? parseInt(m[1]) : 0
+              const label = num >= 1 && num <= 5 ? 'Tiểu học (1-5)' : num >= 6 ? `Khối ${num}` : 'Khác'
+              if (!groups[label]) groups[label] = []
+              groups[label].push(cls)
+            })
+            const sortedKeys = Object.keys(groups).sort((a, b) => {
+              const order = (k: string) => k === 'Tiểu học (1-5)' ? 0 : k === 'Khác' ? 99 : parseInt(k.replace('Khối ', ''))
+              return order(a) - order(b)
+            })
+            return sortedKeys.map(groupLabel => (
+              <div key={groupLabel} className="border border-gray-200 rounded-xl overflow-hidden">
+                <div className="bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  {groupLabel} <span className="text-gray-400 font-normal">({groups[groupLabel].length})</span>
                 </div>
-                {isAdmin && (
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                    <button
-                      onClick={e => { e.stopPropagation(); openEdit(cls) }}
-                      className="text-blue-500 hover:text-blue-700 text-xs px-1"
-                    >Sửa</button>
-                    <button
-                      onClick={e => { e.stopPropagation(); handleDelete(cls) }}
-                      className="text-red-400 hover:text-red-600 text-xs px-1"
-                    >Xóa</button>
-                  </div>
-                )}
+                <div className="divide-y divide-gray-50">
+                  {groups[groupLabel].map(cls => (
+                    <div
+                      key={cls.id}
+                      onClick={() => selectClass(cls)}
+                      className={`px-4 py-2.5 cursor-pointer transition group ${
+                        selected?.id === cls.id
+                          ? 'bg-blue-100 border-l-4 border-l-blue-600'
+                          : 'hover:bg-gray-50 border-l-4 border-l-transparent'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-medium text-gray-800 text-sm">
+                            {cls.name} <span className="text-blue-600">· {cls.subject}</span>
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">{cls.studentCount} HS · {cls.teacherName ?? 'Chưa có GV'}</p>
+                        </div>
+                        {isAdmin && (
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                            <button
+                              onClick={e => { e.stopPropagation(); openEdit(cls) }}
+                              className="text-blue-500 hover:text-blue-700 text-xs px-1"
+                            >Sửa</button>
+                            <button
+                              onClick={e => { e.stopPropagation(); handleDelete(cls) }}
+                              className="text-red-400 hover:text-red-600 text-xs px-1"
+                            >Xóa</button>
+                          </div>
+                        )}
+                      </div>
+                      {cls.notes && <p className="text-xs text-gray-400 mt-1 truncate">{cls.notes}</p>}
+                    </div>
+                  ))}
+                </div>
               </div>
-              {cls.notes && <p className="text-xs text-gray-400 mt-1 truncate">{cls.notes}</p>}
-            </div>
-          ))}
+            ))
+          })()}
           {classes.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-8">Chưa có lớp học nào</p>
           )}

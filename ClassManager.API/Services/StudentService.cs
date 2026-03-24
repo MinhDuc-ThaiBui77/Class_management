@@ -62,7 +62,7 @@ namespace ClassManager.API.Services
             {
                 FullName     = req.FullName.Trim(),
                 Address      = req.Address.Trim(),
-                ParentPhone  = req.ParentPhone.Trim(),
+                ParentPhone  = PhoneHelper.Normalize(req.ParentPhone),
                 DateOfBirth  = req.DateOfBirth.HasValue ? DateTime.SpecifyKind(req.DateOfBirth.Value, DateTimeKind.Utc) : null,
                 EnrolledDate = req.EnrolledDate.HasValue ? DateTime.SpecifyKind(req.EnrolledDate.Value, DateTimeKind.Utc) : DateTime.UtcNow,
                 Notes        = req.Notes.Trim(),
@@ -80,7 +80,7 @@ namespace ClassManager.API.Services
 
             student.FullName    = req.FullName.Trim();
             student.Address     = req.Address.Trim();
-            student.ParentPhone = req.ParentPhone.Trim();
+            student.ParentPhone = PhoneHelper.Normalize(req.ParentPhone);
             student.DateOfBirth = req.DateOfBirth.HasValue ? DateTime.SpecifyKind(req.DateOfBirth.Value, DateTimeKind.Utc) : null;
             student.Notes       = req.Notes.Trim();
 

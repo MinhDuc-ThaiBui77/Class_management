@@ -13,6 +13,24 @@ namespace ClassManager.API.Services
         ];
     }
 
+    public static class PhoneHelper
+    {
+        /// <summary>
+        /// Chuẩn hóa SĐT: bắt đầu bằng 0, đúng 10 số.
+        /// Nếu 9 số → thêm 0 đầu. Nếu rỗng → trả rỗng. Nếu sai → throw.
+        /// </summary>
+        public static string Normalize(string? phone)
+        {
+            if (string.IsNullOrWhiteSpace(phone)) return "";
+            var digits = new string(phone.Trim().Where(char.IsDigit).ToArray());
+            if (digits.Length == 9 && digits[0] != '0')
+                digits = "0" + digits;
+            if (digits.Length != 10 || digits[0] != '0')
+                throw new InvalidOperationException($"SĐT \"{phone.Trim()}\" không hợp lệ. SĐT phải có 10 số và bắt đầu bằng 0.");
+            return digits;
+        }
+    }
+
     public class TeacherService
     {
         private readonly AppDbContext _db;
@@ -55,7 +73,7 @@ namespace ClassManager.API.Services
             var teacher = new Teacher
             {
                 FullName = req.FullName.Trim(),
-                Phone    = req.Phone.Trim(),
+                Phone    = PhoneHelper.Normalize(req.Phone),
                 Email    = req.Email.Trim(),
                 Subject  = req.Subject,
                 Notes  = req.Notes.Trim(),
@@ -74,7 +92,7 @@ namespace ClassManager.API.Services
             if (teacher == null) return null;
             await ValidateUserId(req.UserId, id);
             teacher.FullName = req.FullName.Trim();
-            teacher.Phone    = req.Phone.Trim();
+            teacher.Phone    = PhoneHelper.Normalize(req.Phone);
             teacher.Email    = req.Email.Trim();
             teacher.Subject  = req.Subject;
             teacher.Notes  = req.Notes.Trim();
