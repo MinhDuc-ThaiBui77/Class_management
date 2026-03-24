@@ -8,9 +8,9 @@ namespace ClassManager.API.Models.DTOs
 
     // ── Class ────────────────────────────────────────────────────────
 
-    public record ClassRequest(string Name, string Subject, int? TeacherId, string Notes = "", int? TotalSessions = null, decimal? TuitionFee = null, decimal? TeacherSalaryPerSession = null, DateTime? StartDate = null);
+    public record ClassRequest(string Name, string Subject, int? TeacherId, string Notes = "", int? TotalSessions = null, decimal? TuitionFee = null, DateTime? StartDate = null);
 
-    public record ClassResponse(int Id, string Name, string Subject, string Notes, int StudentCount, int? TeacherId, string? TeacherName, int? TotalSessions = null, decimal? TuitionFee = null, decimal? TeacherSalaryPerSession = null, DateTime? StartDate = null);
+    public record ClassResponse(int Id, string Name, string Subject, string Notes, int StudentCount, int? TeacherId, string? TeacherName, int? TotalSessions = null, decimal? TuitionFee = null, int CurrentSessions = 0, DateTime? StartDate = null);
 
     public record ClassStudentItem(int StudentId, string FullName, string Address, DateTime EnrolledDate);
 
@@ -55,7 +55,8 @@ namespace ClassManager.API.Models.DTOs
     public record SessionRequest(int ClassId, DateTime SessionDate, string Room, string TimeSlot, string Topic = "", string Notes = "");
 
     public record SessionResponse(int Id, int ClassId, string ClassName, string Subject, string? TeacherName,
-        DateTime SessionDate, string Room, string TimeSlot, string Topic, string Notes);
+        DateTime SessionDate, string Room, string TimeSlot, string Topic, string Notes,
+        int SessionIndex, int? TotalSessions);
 
     public record UpdateTopicRequest(string Topic);
 

@@ -23,6 +23,7 @@ builder.Services.AddScoped<AttendanceService>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<ExpenseService>();
 builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<ExportService>();
 
 // ── JWT Authentication ────────────────────────────────────────────
 var jwtKey = builder.Configuration["Jwt:Key"]!;

@@ -38,6 +38,7 @@ export const teachersApi = {
   create: (data: object) => api.post('/teachers', data),
   update: (id: number, data: object) => api.put(`/teachers/${id}`, data),
   delete: (id: number) => api.delete(`/teachers/${id}`),
+  export: () => api.get('/teachers/export', { responseType: 'blob' }),
 }
 
 // ── Classes ───────────────────────────────────────────────────────
@@ -50,6 +51,8 @@ export const classesApi = {
   getStudents: (id: number) => api.get(`/classes/${id}/students`),
   enroll: (id: number, studentId: number) => api.post(`/classes/${id}/students`, { studentId }),
   unenroll: (id: number, studentId: number) => api.delete(`/classes/${id}/students/${studentId}`),
+  exportStudents: (id: number) => api.get(`/classes/${id}/export`, { responseType: 'blob' }),
+  exportAttendance: (id: number) => api.get(`/classes/${id}/export-attendance`, { responseType: 'blob' }),
 }
 
 // ── Students ──────────────────────────────────────────────────────
@@ -64,6 +67,8 @@ export const studentsApi = {
     api.put(`/students/${id}`, data),
   delete: (id: number) =>
     api.delete(`/students/${id}`),
+  export: () =>
+    api.get('/students/export', { responseType: 'blob' }),
 }
 
 // ── Attendance ────────────────────────────────────────────────────
@@ -122,6 +127,8 @@ export const paymentsApi = {
     api.post('/payments', data),
   delete: (id: number) =>
     api.delete(`/payments/${id}`),
+  export: (classId?: number) =>
+    api.get('/payments/export', { params: classId ? { classId } : {}, responseType: 'blob' }),
 }
 
 // ── Expenses ─────────────────────────────────────────────────────
@@ -151,6 +158,14 @@ export function normalizePhone(phone: string): string {
   if (normalized.length !== 10 || normalized[0] !== '0')
     throw new Error(`SĐT "${phone.trim()}" không hợp lệ. SĐT phải có 10 số và bắt đầu bằng 0.`)
   return normalized
+}
+
+// ── Download helper ──────────────────────────────────────────────
+export function downloadBlob(res: { data: Blob }, filename: string) {
+  const url = URL.createObjectURL(new Blob([res.data]))
+  const a = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
 }
 
 export default api

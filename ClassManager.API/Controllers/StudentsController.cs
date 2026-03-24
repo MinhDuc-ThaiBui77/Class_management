@@ -14,8 +14,9 @@ namespace ClassManager.API.Controllers
         private readonly StudentService _svc;
         private readonly UserService    _userSvc;
         private readonly ImportService  _importSvc;
-        public StudentsController(StudentService svc, UserService userSvc, ImportService importSvc)
-        { _svc = svc; _userSvc = userSvc; _importSvc = importSvc; }
+        private readonly ExportService  _exportSvc;
+        public StudentsController(StudentService svc, UserService userSvc, ImportService importSvc, ExportService exportSvc)
+        { _svc = svc; _userSvc = userSvc; _importSvc = importSvc; _exportSvc = exportSvc; }
 
         private int  CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         private bool IsAdmin       => User.IsInRole("admin");
@@ -70,6 +71,13 @@ namespace ClassManager.API.Controllers
         {
             var ok = await _svc.DeleteAsync(id);
             return ok ? NoContent() : NotFound();
+        }
+
+        [HttpGet("export")]
+        public async Task<IActionResult> Export()
+        {
+            var bytes = await _exportSvc.ExportStudentsAsync(await CallerTeacherIdAsync());
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "danh-sach-hoc-sinh.xlsx");
         }
 
         // GET /api/students/import-template — tải file Excel mẫu

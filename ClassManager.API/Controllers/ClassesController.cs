@@ -14,8 +14,9 @@ namespace ClassManager.API.Controllers
         private readonly ClassService  _svc;
         private readonly UserService   _userSvc;
         private readonly ImportService _importSvc;
-        public ClassesController(ClassService svc, UserService userSvc, ImportService importSvc)
-        { _svc = svc; _userSvc = userSvc; _importSvc = importSvc; }
+        private readonly ExportService _exportSvc;
+        public ClassesController(ClassService svc, UserService userSvc, ImportService importSvc, ExportService exportSvc)
+        { _svc = svc; _userSvc = userSvc; _importSvc = importSvc; _exportSvc = exportSvc; }
 
         private int    CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         private bool   IsAdmin       => User.IsInRole("admin");
@@ -69,6 +70,20 @@ namespace ClassManager.API.Controllers
         }
 
         // ── Enroll / Unenroll ─────────────────────────────────────────
+
+        [HttpGet("{id}/export")]
+        public async Task<IActionResult> ExportStudents(int id)
+        {
+            var bytes = await _exportSvc.ExportClassStudentsAsync(id);
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"lop-{id}.xlsx");
+        }
+
+        [HttpGet("{id}/export-attendance")]
+        public async Task<IActionResult> ExportAttendance(int id)
+        {
+            var bytes = await _exportSvc.ExportAttendanceAsync(id);
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"diem-danh-{id}.xlsx");
+        }
 
         [HttpGet("{id}/students")]
         public async Task<IActionResult> GetStudents(int id)
