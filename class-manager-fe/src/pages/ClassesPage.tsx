@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { classesApi, studentsApi, teachersApi } from '../api'
+import { classesApi, studentsApi, teachersApi, downloadBlob } from '../api'
 import { useAuth } from '../hooks/useAuth'
 import ImportModal from '../components/ImportModal'
 
@@ -13,7 +13,7 @@ interface Class {
   teacherName: string | null
   totalSessions: number | null
   tuitionFee: number | null
-  teacherSalaryPerSession: number | null
+  currentSessions: number
 }
 
 interface Teacher {
@@ -48,7 +48,7 @@ function parseName(name: string) {
   return { khoi: '', nhom: 'A', so: '1' }
 }
 
-const emptyForm = { khoi: '', nhom: 'A', so: '1', subject: '', teacherId: '' as string | number, notes: '', totalSessions: '' as string | number, tuitionFee: '' as string | number, teacherSalaryPerSession: '' as string | number }
+const emptyForm = { khoi: '', nhom: 'A', so: '1', subject: '', teacherId: '' as string | number, notes: '', totalSessions: '' as string | number, tuitionFee: '' as string | number }
 
 export default function ClassesPage() {
   const { isAdmin } = useAuth()
@@ -80,6 +80,7 @@ export default function ClassesPage() {
   const selectClass = async (cls: Class) => {
     setSelected(cls)
     setEnrollError('')
+    setAddSearch('')
     const [enrolledRes, allRes] = await Promise.all([
       classesApi.getStudents(cls.id),
       studentsApi.getAll(),
@@ -98,7 +99,7 @@ export default function ClassesPage() {
   const openEdit = (cls: Class) => {
     setEditing(cls)
     const parsed = parseName(cls.name)
-    setForm({ ...parsed, subject: cls.subject, teacherId: cls.teacherId ?? '', notes: cls.notes, totalSessions: cls.totalSessions ?? '', tuitionFee: cls.tuitionFee ?? '', teacherSalaryPerSession: cls.teacherSalaryPerSession ?? '' })
+    setForm({ ...parsed, subject: cls.subject, teacherId: cls.teacherId ?? '', notes: cls.notes, totalSessions: cls.totalSessions ?? '', tuitionFee: cls.tuitionFee ?? '' })
     setError('')
     setShowForm(true)
   }
@@ -116,7 +117,6 @@ export default function ClassesPage() {
         notes: form.notes,
         totalSessions: form.totalSessions === '' ? null : Number(form.totalSessions),
         tuitionFee: form.tuitionFee === '' ? null : Number(form.tuitionFee),
-        teacherSalaryPerSession: form.teacherSalaryPerSession === '' ? null : Number(form.teacherSalaryPerSession),
       }
       if (editing) {
         await classesApi.update(editing.id, payload)
@@ -126,7 +126,7 @@ export default function ClassesPage() {
       setShowForm(false)
       loadClasses()
       if (selected && editing?.id === selected.id) {
-        setSelected(prev => prev ? { ...prev, name, subject: form.subject, teacherId: payload.teacherId, totalSessions: payload.totalSessions ?? null, tuitionFee: payload.tuitionFee ?? null, teacherSalaryPerSession: payload.teacherSalaryPerSession ?? null } : null)
+        setSelected(prev => prev ? { ...prev, name, subject: form.subject, teacherId: payload.teacherId, totalSessions: payload.totalSessions ?? null, tuitionFee: payload.tuitionFee ?? null } : null)
       }
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Có lỗi xảy ra.')
@@ -165,106 +165,139 @@ export default function ClassesPage() {
   const enrolledIds = new Set(enrolled.map(s => s.studentId))
   const notEnrolled = allStudents.filter(s => !enrolledIds.has(s.id))
 
-  return (
-    <div className="flex gap-6">
-      {/* Danh sách lớp */}
-      <div className="w-72 flex-shrink-0">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-800">Lớp học</h2>
-            <p className="text-sm text-gray-400">{classes.length} lớp</p>
-          </div>
-          {isAdmin && (
-            <button
-              onClick={openAdd}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition"
-            >
-              + Thêm lớp
-            </button>
-          )}
-        </div>
+  // Sort + search
+  const sortedEnrolled = [...enrolled].sort((a, b) => a.fullName.localeCompare(b.fullName, 'vi'))
+  const [addSearch, setAddSearch] = useState('')
+  const filteredNotEnrolled = notEnrolled
+    .filter(s => !addSearch || s.fullName.toLowerCase().includes(addSearch.toLowerCase()))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, 'vi'))
 
-        <div className="space-y-3">
-          {(() => {
-            // Nhóm lớp theo khối
-            const groups: Record<string, typeof classes> = {}
-            classes.forEach(cls => {
-              const m = cls.name.match(/^(\d+)/)
-              const num = m ? parseInt(m[1]) : 0
-              const label = num >= 1 && num <= 5 ? 'Tiểu học (1-5)' : num >= 6 ? `Khối ${num}` : 'Khác'
-              if (!groups[label]) groups[label] = []
-              groups[label].push(cls)
-            })
-            const sortedKeys = Object.keys(groups).sort((a, b) => {
-              const order = (k: string) => k === 'Tiểu học (1-5)' ? 0 : k === 'Khác' ? 99 : parseInt(k.replace('Khối ', ''))
-              return order(a) - order(b)
-            })
-            return sortedKeys.map(groupLabel => (
-              <div key={groupLabel} className="border border-gray-200 rounded-xl overflow-hidden">
-                <div className="bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  {groupLabel} <span className="text-gray-400 font-normal">({groups[groupLabel].length})</span>
+  // Nhóm lớp theo khối
+  const groups: Record<string, typeof classes> = {}
+  classes.forEach(cls => {
+    const m = cls.name.match(/^(\d+)/)
+    const num = m ? parseInt(m[1]) : 0
+    const label = num >= 1 && num <= 5 ? 'TH' : num >= 6 ? `K${num}` : '?'
+    if (!groups[label]) groups[label] = []
+    groups[label].push(cls)
+  })
+  const gradeKeys = Object.keys(groups).sort((a, b) => {
+    const order = (k: string) => k === 'TH' ? 0 : k === '?' ? 99 : parseInt(k.replace('K', ''))
+    return order(a) - order(b)
+  })
+  const [activeGrade, setActiveGrade] = useState(() => gradeKeys[0] ?? '')
+  const gradeClasses = groups[activeGrade] ?? []
+
+  return (
+    <div className="space-y-5 animate-fade-in">
+      {/* Header — same style as other tabs */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Lớp học</h2>
+          <p className="text-sm text-gray-400">{classes.length} lớp · {classes.reduce((s, c) => s + c.studentCount, 0)} học sinh</p>
+        </div>
+        {isAdmin && (
+          <button onClick={openAdd} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition">
+            + Thêm lớp
+          </button>
+        )}
+      </div>
+
+      {/* Grade tabs — pill style */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1">
+        {gradeKeys.map(key => (
+          <button
+            key={key}
+            onClick={() => setActiveGrade(key)}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition whitespace-nowrap border ${
+              activeGrade === key
+                ? 'bg-red-600 text-white border-red-600'
+                : 'bg-white border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600'
+            }`}
+          >
+            {key === 'TH' ? 'Tiểu học' : key === '?' ? 'Khác' : `Khối ${key.replace('K','')}`}
+            <span className={`ml-1 text-xs ${activeGrade === key ? 'text-red-200' : 'text-gray-400'}`}>
+              ({groups[key].length})
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Class cards grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {gradeClasses.map(cls => {
+          const isSelected = selected?.id === cls.id
+          const progress = cls.totalSessions ? Math.round((cls.currentSessions / cls.totalSessions) * 100) : 0
+
+          return (
+            <div
+              key={cls.id}
+              onClick={() => selectClass(cls)}
+              className={`bg-white rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md group ${
+                isSelected ? 'border-red-400 ring-2 ring-red-50 shadow-sm' : 'border-gray-100 hover:border-gray-200'
+              }`}
+            >
+              {/* Name + subject + actions */}
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">{cls.name}</h3>
+                  <span className="text-xs px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full font-medium">{cls.subject}</span>
                 </div>
-                <div className="divide-y divide-gray-50">
-                  {groups[groupLabel].map(cls => (
-                    <div
-                      key={cls.id}
-                      onClick={() => selectClass(cls)}
-                      className={`px-4 py-2.5 cursor-pointer transition group ${
-                        selected?.id === cls.id
-                          ? 'bg-blue-100 border-l-4 border-l-blue-600'
-                          : 'hover:bg-gray-50 border-l-4 border-l-transparent'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-medium text-gray-800 text-sm">
-                            {cls.name} <span className="text-blue-600">· {cls.subject}</span>
-                          </p>
-                          <p className="text-xs text-gray-400 mt-0.5">{cls.studentCount} HS · {cls.teacherName ?? 'Chưa có GV'}</p>
-                        </div>
-                        {isAdmin && (
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                            <button
-                              onClick={e => { e.stopPropagation(); openEdit(cls) }}
-                              className="text-blue-500 hover:text-blue-700 text-xs px-1"
-                            >Sửa</button>
-                            <button
-                              onClick={e => { e.stopPropagation(); handleDelete(cls) }}
-                              className="text-red-400 hover:text-red-600 text-xs px-1"
-                            >Xóa</button>
-                          </div>
-                        )}
-                      </div>
-                      {cls.notes && <p className="text-xs text-gray-400 mt-1 truncate">{cls.notes}</p>}
-                    </div>
-                  ))}
+                {isAdmin && (
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                    <button onClick={e => { e.stopPropagation(); openEdit(cls) }} className="text-gray-400 hover:text-red-600 text-xs font-medium">Sửa</button>
+                    <button onClick={e => { e.stopPropagation(); handleDelete(cls) }} className="text-gray-400 hover:text-red-600 text-xs">Xóa</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Info rows */}
+              <div className="space-y-2 text-xs text-gray-500">
+                <div className="flex items-center justify-between">
+                  <span>{cls.studentCount} học sinh</span>
+                  {cls.tuitionFee != null && cls.tuitionFee > 0 && (
+                    <span className="font-semibold text-red-600">{cls.tuitionFee.toLocaleString('vi-VN')}₫</span>
+                  )}
+                </div>
+                <div className={cls.teacherName ? 'text-gray-700' : 'text-gray-300 italic'}>
+                  GV: {cls.teacherName ?? 'Chưa phân công'}
                 </div>
               </div>
-            ))
-          })()}
-          {classes.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-8">Chưa có lớp học nào</p>
-          )}
-        </div>
+
+              {/* Progress bar */}
+              {cls.totalSessions != null && cls.totalSessions > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-50">
+                  <div className="flex items-center justify-between text-[11px] mb-1">
+                    <span className="text-gray-400">Tiến độ</span>
+                    <span className={`font-semibold ${progress >= 100 ? 'text-green-600' : 'text-red-600'}`}>
+                      {cls.currentSessions}/{cls.totalSessions} buổi
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5">
+                    <div className="bg-red-500 h-1.5 rounded-full transition-all" style={{ width: `${Math.min(progress, 100)}%` }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+        {gradeClasses.length === 0 && (
+          <p className="text-sm text-gray-400 col-span-full text-center py-8">Không có lớp nào trong khối này</p>
+        )}
       </div>
 
       {/* Panel học sinh trong lớp */}
-      <div className="flex-1">
-        {!selected ? (
-          <div className="h-full flex items-center justify-center text-gray-400 text-sm">
-            ← Chọn lớp để quản lý học sinh
-          </div>
-        ) : (
-          <>
+      {selected && (
+        <div>
             <div className="mb-4">
               <h3 className="text-lg font-semibold text-gray-800">
-                {selected.name} <span className="text-blue-600">· {selected.subject}</span>
+                {selected.name} <span className="text-red-600">· {selected.subject}</span>
               </h3>
               <div className="flex gap-4 mt-1 text-sm text-gray-500">
                 <span>{enrolled.length} học sinh</span>
                 {selected.totalSessions != null && <span>· {selected.totalSessions} buổi</span>}
                 {selected.tuitionFee != null && <span>· Học phí: {selected.tuitionFee.toLocaleString('vi-VN')}₫</span>}
-                {selected.teacherSalaryPerSession != null && <span>· Lương GV/buổi: {selected.teacherSalaryPerSession.toLocaleString('vi-VN')}₫</span>}
+                {selected.currentSessions > 0 && <span>· Đã học: {selected.currentSessions}{selected.totalSessions ? `/${selected.totalSessions}` : ''} buổi</span>}
               </div>
             </div>
 
@@ -273,17 +306,14 @@ export default function ClassesPage() {
               <div className="bg-white rounded-xl border border-gray-100">
                 <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
                   <p className="text-sm font-medium text-gray-700">Đang học</p>
-                  {isAdmin && (
-                    <button
-                      onClick={() => setShowImport(true)}
-                      className="text-xs text-blue-500 hover:text-blue-700 transition"
-                    >
-                      Import Excel
-                    </button>
-                  )}
+                  <div className="flex gap-2">
+                    <button onClick={async () => { const r = await classesApi.exportStudents(selected.id); downloadBlob(r, `lop-${selected.name}.xlsx`) }} className="text-xs text-gray-400 hover:text-gray-600 transition">Export DS</button>
+                    <button onClick={async () => { const r = await classesApi.exportAttendance(selected.id); downloadBlob(r, `diem-danh-${selected.name}.xlsx`) }} className="text-xs text-gray-400 hover:text-gray-600 transition">Export ĐD</button>
+                    {isAdmin && <button onClick={() => setShowImport(true)} className="text-xs text-red-600 hover:text-red-700 transition">Import</button>}
+                  </div>
                 </div>
-                <div className="divide-y divide-gray-50">
-                  {enrolled.map(s => (
+                <div className="divide-y divide-gray-50 max-h-[400px] overflow-y-auto">
+                  {sortedEnrolled.map(s => (
                     <div key={s.studentId} className="flex items-center justify-between px-4 py-2.5">
                       <div>
                         <p className="text-sm font-medium text-gray-800">{s.fullName}</p>
@@ -305,14 +335,21 @@ export default function ClassesPage() {
 
               {/* Thêm học sinh vào lớp — chỉ admin */}
               {isAdmin && <div className="bg-white rounded-xl border border-gray-100">
-                <div className="px-4 py-3 border-b border-gray-50">
+                <div className="px-4 py-3 border-b border-gray-50 space-y-2">
                   <p className="text-sm font-medium text-gray-700">Thêm vào lớp</p>
+                  <input
+                    type="text"
+                    placeholder="Tìm học sinh..."
+                    value={addSearch}
+                    onChange={e => setAddSearch(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white placeholder-gray-400 transition"
+                  />
                 </div>
                 {enrollError && (
                   <p className="text-red-500 text-xs px-4 pt-2">{enrollError}</p>
                 )}
-                <div className="divide-y divide-gray-50">
-                  {notEnrolled.map(s => (
+                <div className="divide-y divide-gray-50 max-h-[400px] overflow-y-auto">
+                  {filteredNotEnrolled.map(s => (
                     <div key={s.id} className="flex items-center justify-between px-4 py-2.5">
                       <div>
                         <p className="text-sm font-medium text-gray-800">{s.fullName}</p>
@@ -320,11 +357,11 @@ export default function ClassesPage() {
                       </div>
                       <button
                         onClick={() => handleEnroll(s.id)}
-                        className="text-blue-500 hover:text-blue-700 text-xs font-medium transition"
+                        className="text-red-600 hover:text-red-700 text-xs font-medium transition"
                       >+ Thêm</button>
                     </div>
                   ))}
-                  {notEnrolled.length === 0 && (
+                  {filteredNotEnrolled.length === 0 && (
                     <p className="text-sm text-gray-400 text-center py-6">
                       {allStudents.length === 0 ? 'Chưa có học sinh nào' : 'Tất cả đã vào lớp'}
                     </p>
@@ -332,9 +369,8 @@ export default function ClassesPage() {
                 </div>
               </div>}
             </div>
-          </>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Modal form */}
       {showForm && (
@@ -351,7 +387,7 @@ export default function ClassesPage() {
                     required
                     value={form.khoi}
                     onChange={e => setForm(f => ({ ...f, khoi: e.target.value }))}
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   >
                     <option value="">Khối</option>
                     {KHOI.map(k => <option key={k} value={k}>{k}</option>)}
@@ -359,14 +395,14 @@ export default function ClassesPage() {
                   <select
                     value={form.nhom}
                     onChange={e => setForm(f => ({ ...f, nhom: e.target.value }))}
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   >
                     {NHOM.map(n => <option key={n} value={n}>{n}</option>)}
                   </select>
                   <select
                     value={form.so}
                     onChange={e => setForm(f => ({ ...f, so: e.target.value }))}
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   >
                     {SO.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -381,7 +417,7 @@ export default function ClassesPage() {
                   required
                   value={form.subject}
                   onChange={e => setForm(f => ({ ...f, subject: e.target.value, teacherId: '' }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
                   <option value="">-- Chọn môn học --</option>
                   {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -399,7 +435,7 @@ export default function ClassesPage() {
                         value={form.teacherId}
                         onChange={e => setForm(f => ({ ...f, teacherId: e.target.value }))}
                         disabled={!form.subject}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-50 disabled:text-gray-400"
                       >
                         <option value="">-- Chưa phân công --</option>
                         {filtered.map(t => (
@@ -422,7 +458,7 @@ export default function ClassesPage() {
                     value={form.totalSessions}
                     onChange={e => setForm(f => ({ ...f, totalSessions: e.target.value }))}
                     placeholder="VD: 24"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   />
                 </div>
                 <div>
@@ -433,27 +469,16 @@ export default function ClassesPage() {
                     value={form.tuitionFee}
                     onChange={e => setForm(f => ({ ...f, tuitionFee: e.target.value }))}
                     placeholder="VD: 500000"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   />
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Lương GV / buổi (VNĐ)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={form.teacherSalaryPerSession}
-                  onChange={e => setForm(f => ({ ...f, teacherSalaryPerSession: e.target.value }))}
-                  placeholder="VD: 100000"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Ghi chú</label>
                 <textarea
                   value={form.notes}
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   rows={2}
                 />
               </div>
@@ -462,7 +487,7 @@ export default function ClassesPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50"
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50"
                 >
                   {loading ? 'Đang lưu...' : 'Lưu'}
                 </button>

@@ -137,7 +137,7 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
                   <select
                     value={selectedClassId}
                     onChange={e => setSelectedClassId(e.target.value ? Number(e.target.value) : '')}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
                   >
                     <option value="">— Không gán vào lớp —</option>
                     {classes.map(c => (
@@ -166,7 +166,7 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
                         type="date"
                         value={startDate}
                         onChange={e => setStartDate(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                       />
                     </div>
                   </div>
@@ -182,7 +182,7 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => fileRef.current?.click()}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
                 >
                   Chọn file .xlsx
                 </button>
@@ -270,7 +270,7 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
                   <button
                     onClick={handleImport}
                     disabled={loading || validCount === 0}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50"
+                    className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50"
                   >
                     {loading ? 'Đang import...' : `Import ${validCount} học sinh${resolvedClassId ? ' vào lớp' : ''}`}
                   </button>
@@ -309,7 +309,7 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
               )}
             </div>
             <button onClick={onClose}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition">
+              className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition">
               Đóng
             </button>
           </div>
