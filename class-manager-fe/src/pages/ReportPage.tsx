@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { reportsApi, expensesApi } from '../api'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
@@ -63,8 +63,22 @@ export default function ReportPage() {
   const [expenseForm, setExpenseForm] = useState({ title: '', amount: '', expenseDate: '', isRecurring: false, notes: '' })
   const [expenseError, setExpenseError] = useState('')
 
+  // Stale-while-revalidate cache
+  const cacheRef = useRef<Record<string, { summary: Summary; chart: ChartItem[] }>>({})
+
   const loadData = async () => {
-    setLoading(true)
+    const key = `${period}-${year}-${month}-${quarter}`
+    const cached = cacheRef.current[key]
+
+    // Show stale data instantly
+    if (cached) {
+      setSummary(cached.summary)
+      setChartData(cached.chart)
+    }
+
+    // Only show loading spinner if no cached data
+    if (!cached) setLoading(true)
+
     try {
       const [summaryRes, chartRes] = await Promise.all([
         reportsApi.summary(period, year, month, quarter),
@@ -72,6 +86,7 @@ export default function ReportPage() {
       ])
       setSummary(summaryRes.data)
       setChartData(chartRes.data)
+      cacheRef.current[key] = { summary: summaryRes.data, chart: chartRes.data }
     } catch { /* ignore */ }
     setLoading(false)
   }
