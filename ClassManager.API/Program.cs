@@ -236,7 +236,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-// Health check — dùng cho external ping giữ server không ngủ
-app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow }));
+// Health check — dùng cho external ping giữ server không ngủ (GET + HEAD)
+app.MapMethods("/health", new[] { "GET", "HEAD" }, () => Results.Ok(new { status = "ok", time = DateTime.UtcNow }));
 
 app.Run();
