@@ -52,7 +52,8 @@ export const classesApi = {
   enroll: (id: number, studentId: number) => api.post(`/classes/${id}/students`, { studentId }),
   unenroll: (id: number, studentId: number) => api.delete(`/classes/${id}/students/${studentId}`),
   exportStudents: (id: number) => api.get(`/classes/${id}/export`, { responseType: 'blob' }),
-  exportAttendance: (id: number) => api.get(`/classes/${id}/export-attendance`, { responseType: 'blob' }),
+  exportAttendance: (id: number, month?: number, year?: number) =>
+    api.get(`/classes/${id}/export-attendance`, { params: { month, year }, responseType: 'blob' }),
 }
 
 // ── Students ──────────────────────────────────────────────────────
@@ -79,6 +80,10 @@ export const attendanceApi = {
     api.get('/attendance/sessions'),
   createSession: (data: object) =>
     api.post('/attendance/sessions', data),
+  copyPreview: (weekStart: string) =>
+    api.get('/attendance/sessions/copy-preview', { params: { week: weekStart } }),
+  copyWeek: (weekStart: string, sessionIds?: number[]) =>
+    api.post('/attendance/sessions/copy-week', sessionIds ?? null, { params: { week: weekStart } }),
   deleteSession: (id: number) =>
     api.delete(`/attendance/sessions/${id}`),
   updateTopic: (id: number, topic: string) =>

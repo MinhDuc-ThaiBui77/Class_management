@@ -8,6 +8,7 @@ namespace ClassManager.API.Models
         public string Notes { get; set; } = "";
         public int? TotalSessions { get; set; }
         public decimal? TuitionFee { get; set; }
+        public int TeacherSharePercent { get; set; } = 75; // % chia cho GV, mặc định 75
         public DateTime? StartDate { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

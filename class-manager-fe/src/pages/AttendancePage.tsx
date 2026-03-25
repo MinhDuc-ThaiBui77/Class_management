@@ -35,6 +35,13 @@ function MiniCalendar({ selectedDate, onSelect, sessionDates, mode = 'day' }: {
   const [viewYear, setViewYear] = useState(sel.getFullYear())
   const [viewMonth, setViewMonth] = useState(sel.getMonth())
 
+  // Sync khi selectedDate thay đổi (chuyển tuần qua tháng khác)
+  useEffect(() => {
+    const d = new Date(selectedDate + 'T00:00')
+    setViewYear(d.getFullYear())
+    setViewMonth(d.getMonth())
+  }, [selectedDate])
+
   const today = toDateStr(new Date())
   const firstDay = new Date(viewYear, viewMonth, 1)
   const startOffset = (firstDay.getDay() + 6) % 7 // Monday = 0
@@ -420,6 +427,8 @@ function ScheduleTab() {
 
   const [showCreate, setShowCreate] = useState(false)
   const [detailSession, setDetailSession] = useState<Session | null>(null)
+  const [copyPreview, setCopyPreview] = useState<any[] | null>(null)
+  const [copySelected, setCopySelected] = useState<Set<number>>(new Set())
   const [createForm, setCreateForm] = useState({ classId: '' as string | number, room: '', timeSlot: '', date: '', topic: '', notes: '', dutyTeacher: '' })
   const [createError, setCreateError] = useState('')
 
@@ -524,6 +533,21 @@ function ScheduleTab() {
         </h3>
         <button onClick={() => setWeekStart(addDays(weekStart, 7))} className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition">▶</button>
         <button onClick={() => setWeekStart(getMonday(new Date()))} className="text-red-600 hover:text-red-700 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition">Tuần này</button>
+        {isAdmin && (
+          <button
+            onClick={async () => {
+              try {
+                const r = await attendanceApi.copyPreview(toDateStr(weekStart))
+                if (r.data.length === 0) { alert('Tuần trước không có buổi học nào.'); return }
+                setCopyPreview(r.data)
+                setCopySelected(new Set(r.data.filter((i: any) => i.canCopy).map((i: any) => i.sessionId)))
+              } catch (err: any) { alert(err.response?.data?.message ?? 'Có lỗi') }
+            }}
+            className="text-amber-600 hover:text-amber-700 text-xs font-medium px-2 py-1 rounded-lg hover:bg-amber-50 transition ml-auto"
+          >
+            Copy tuần trước
+          </button>
+        )}
       </div>
 
       {/* Calendar grid — compact */}
@@ -623,6 +647,79 @@ function ScheduleTab() {
                 <button onClick={() => { handleDelete(detailSession); setDetailSession(null) }} className="text-red-500 hover:text-red-700 text-xs font-medium">Xóa buổi học</button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Copy preview modal */}
+      {copyPreview && (
+        <div className="fixed inset-0 backdrop-blur-sm bg-gradient-to-br from-red-50 via-amber-50 to-white bg-opacity-80 flex items-center justify-center z-50" onClick={() => setCopyPreview(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 p-6 w-full max-w-lg max-h-[80vh] flex flex-col animate-fade-in" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-gray-900 mb-1">Copy lịch từ tuần trước</h3>
+            <p className="text-xs text-gray-400 mb-3">Chọn buổi muốn copy (nội dung để trống)</p>
+
+            <div className="flex-1 overflow-auto border border-gray-100 rounded-lg mb-4">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-2 py-2 text-left w-8">
+                      <input type="checkbox"
+                        checked={copyPreview.filter(i => i.canCopy).every(i => copySelected.has(i.sessionId))}
+                        onChange={e => {
+                          if (e.target.checked) setCopySelected(new Set(copyPreview.filter(i => i.canCopy).map(i => i.sessionId)))
+                          else setCopySelected(new Set())
+                        }} />
+                    </th>
+                    <th className="px-2 py-2 text-left">Lớp</th>
+                    <th className="px-2 py-2 text-left">Phòng · Ca</th>
+                    <th className="px-2 py-2 text-left">Ngày mới</th>
+                    <th className="px-2 py-2 text-left">Trạng thái</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {copyPreview.map((item: any) => (
+                    <tr key={item.sessionId} className={!item.canCopy ? 'opacity-50' : ''}>
+                      <td className="px-2 py-2">
+                        <input type="checkbox" disabled={!item.canCopy} checked={copySelected.has(item.sessionId)}
+                          onChange={e => {
+                            const next = new Set(copySelected)
+                            e.target.checked ? next.add(item.sessionId) : next.delete(item.sessionId)
+                            setCopySelected(next)
+                          }} />
+                      </td>
+                      <td className="px-2 py-2 font-medium text-gray-800">{item.className} <span className="text-gray-400">{item.subject}</span></td>
+                      <td className="px-2 py-2 text-gray-600">{item.room} · {SLOT_SHORT[item.timeSlot] ?? item.timeSlot}</td>
+                      <td className="px-2 py-2 text-gray-600">{new Date(item.toDate).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })}</td>
+                      <td className="px-2 py-2">
+                        {item.limitError
+                          ? <span className="text-amber-500 font-medium">{item.limitError}</span>
+                          : item.conflict
+                            ? <span className="text-red-500 text-[10px]">Ghi đè: {item.conflictInfo}</span>
+                            : <span className="text-green-600 font-medium">OK</span>
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-400">{copySelected.size}/{copyPreview.filter((i: any) => i.canCopy).length} buổi được chọn</span>
+              <div className="flex gap-2">
+                <button onClick={async () => {
+                  if (copySelected.size === 0) return
+                  const r = await attendanceApi.copyWeek(toDateStr(weekStart), [...copySelected])
+                  setCopyPreview(null)
+                  loadWeek()
+                  alert(`Đã copy ${r.data.created} buổi mới${r.data.replaced ? `, ghi đè ${r.data.replaced} buổi` : ''}${r.data.skipped ? `, bỏ qua ${r.data.skipped}` : ''}`)
+                }} disabled={copySelected.size === 0}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-30">
+                  Copy {copySelected.size} buổi
+                </button>
+                <button onClick={() => setCopyPreview(null)} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 transition">Hủy</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

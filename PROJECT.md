@@ -146,7 +146,9 @@ Teachers: id, fullName, phone, email, subject, notes, isActive, createdAt, userI
 
 Students: id, fullName, address, parentPhone, dateOfBirth?, enrolledDate, notes, isActive(soft delete), createdAt
 
-Classes: id, name(UNIQUE), subject, notes, totalSessions(int?), tuitionFee(decimal?), startDate?, createdAt, teacherId(FK→Teachers nullable)
+Classes: id, name, subject, notes, totalSessions(int?), tuitionFee(decimal?), teacherSharePercent(int, default 75),
+  startDate?, createdAt, teacherId(FK→Teachers nullable)
+  UNIQUE: (name + subject)
 
 StudentClass: studentId(FK), classId(FK), enrolledDate — PK(studentId,classId)
 
@@ -233,9 +235,14 @@ Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 - **Animations**: fadeIn, slideIn, shake, shimmer skeleton, toast in/out
 - **Lazy loading**: TeachersPage, ClassesPage, AttendancePage, PaymentsPage, AccountsPage
 
+### UI Components
+- **CurrencyInput**: format tiền tự động (500000 → 500.000), dùng cho học phí + thanh toán
+- **Modals**: backdrop blur gradient đỏ-vàng, click outside đóng
+
 ### Phân quyền UI
 - Admin: 7 mục sidebar, tất cả CRUD
 - Teacher: 5 mục (ẩn Báo cáo + Tài khoản), chỉ xem lớp mình, sửa nội dung buổi dạy
+- Teacher có thể: thêm/import HS vào lớp mình (backend validate IsTeacherOfClass)
 
 ---
 
@@ -249,6 +256,8 @@ Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 - Session limit: không vượt TotalSessions
 - Session index: hiện "buổi X/Y"
 - Calendar compact: ô 28px, chỉ hiện "GV · Lớp", click → modal chi tiết
+- Copy tuần trước: preview danh sách buổi, đánh dấu conflict/limit, cho phép ghi đè buổi conflict
+- Tên lớp unique theo (name + subject): 7A1 Toán + 7A1 Văn OK, 7A1 Toán + 7A1 Toán lỗi
 
 ### Điểm danh
 - Auto-save khi click trạng thái (không cần nút Lưu)
@@ -302,4 +311,6 @@ npm run dev         # Frontend port 5173 (proxy /api → 5227)
 - Attendance: Reason
 - Payment: MonthOf/YearOf → ClassId + unique(StudentId,ClassId)
 - Expenses table
+- Class: TeacherSharePercent (default 75)
+- Session: DutyTeacher
 - Performance indexes (7 indexes)

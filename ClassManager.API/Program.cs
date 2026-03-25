@@ -173,6 +173,14 @@ using (var scope = app.Services.CreateScope())
                 CREATE UNIQUE INDEX "IX_Payments_StudentId_ClassId"
                     ON "Payments" ("StudentId", "ClassId");
             END IF;
+            -- Thêm TeacherSharePercent vào Classes (nếu chưa có)
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Classes' AND column_name = 'TeacherSharePercent'
+            ) THEN
+                ALTER TABLE "Classes" ADD COLUMN "TeacherSharePercent" integer NOT NULL DEFAULT 75;
+            END IF;
+
             -- Thêm DutyTeacher vào Sessions (nếu chưa có)
             IF NOT EXISTS (
                 SELECT 1 FROM information_schema.columns
