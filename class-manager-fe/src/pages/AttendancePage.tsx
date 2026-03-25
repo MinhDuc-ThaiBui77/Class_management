@@ -5,13 +5,20 @@ import { useAuth } from '../hooks/useAuth'
 interface ClassItem { id: number; name: string; subject: string; teacherName: string | null }
 interface Session {
   id: number; classId: number; className: string; subject: string; teacherName: string | null
-  sessionDate: string; room: string; timeSlot: string; topic: string; notes: string
+  sessionDate: string; room: string; timeSlot: string; topic: string; notes: string; dutyTeacher: string
   sessionIndex: number; totalSessions: number | null
 }
 interface AttendanceItem { studentId: number; studentName: string; status: string; reason: string }
 
-const ROOMS = ['Phòng 1', 'Phòng 2', 'Phòng 3', 'Phòng 4', 'Phòng 5']
-const SLOTS = ['Sáng', 'Chiều', 'Tối']
+const ROOMS = ['Phòng 1', 'Phòng 2', 'Phòng 3A', 'Phòng 3B', 'Phòng 5']
+const SLOTS = ['Ca 1 (7h15-9h15)', 'Ca 2 (9h20-11h20)', 'Ca 3 (14h15-16h15)', 'Ca 4 (16h30-18h30)', 'Ca 5 (19h-21h)']
+const SLOT_SHORT: Record<string, string> = {
+  'Ca 1 (7h15-9h15)': 'Ca 1',
+  'Ca 2 (9h20-11h20)': 'Ca 2',
+  'Ca 3 (14h15-16h15)': 'Ca 3',
+  'Ca 4 (16h30-18h30)': 'Ca 4',
+  'Ca 5 (19h-21h)': 'Ca 5',
+}
 const DAY_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -90,7 +97,7 @@ function MiniCalendar({ selectedDate, onSelect, sessionDates, mode = 'day' }: {
           return (
             <div
               key={ri}
-              className={`grid grid-cols-7 gap-0.5 my-0.5 ${weekHasSelection ? 'ring-2 ring-red-400 rounded-lg bg-red-50/40 relative z-10' : ''}`}
+              className={`grid grid-cols-7 gap-0.5 my-0.5 ${weekHasSelection ? 'ring-2 ring-red-400 rounded-lg bg-red-50 relative z-10' : ''}`}
             >
               {weekRow.map((cell, ci) => {
                 if (!cell) return <div key={`e${ri}-${ci}`} className="w-8 h-8" />
@@ -303,6 +310,7 @@ function AttendanceTab() {
                 <span className="text-xs text-gray-400">{s.room} · {s.timeSlot}{s.totalSessions ? ` · Buổi ${s.sessionIndex}/${s.totalSessions}` : ''}</span>
               </div>
               {s.teacherName && <p className="text-sm text-gray-600">GV: {s.teacherName}</p>}
+              {s.dutyTeacher && <p className="text-xs text-amber-600">Trực ca: {s.dutyTeacher}</p>}
               {s.topic && <p className="text-xs text-gray-400 mt-1 truncate">{s.topic}</p>}
             </div>
           ))}
@@ -411,7 +419,8 @@ function ScheduleTab() {
   const [classes, setClasses] = useState<ClassItem[]>([])
 
   const [showCreate, setShowCreate] = useState(false)
-  const [createForm, setCreateForm] = useState({ classId: '' as string | number, room: '', timeSlot: '', date: '', topic: '', notes: '' })
+  const [detailSession, setDetailSession] = useState<Session | null>(null)
+  const [createForm, setCreateForm] = useState({ classId: '' as string | number, room: '', timeSlot: '', date: '', topic: '', notes: '', dutyTeacher: '' })
   const [createError, setCreateError] = useState('')
 
   useEffect(() => {
@@ -435,7 +444,7 @@ function ScheduleTab() {
 
   const openCreate = (date: Date, room: string, slot: string) => {
     if (!isAdmin) return
-    setCreateForm({ classId: '', room, timeSlot: slot, date: toDateStr(date), topic: '', notes: '' })
+    setCreateForm({ classId: '', room, timeSlot: slot, date: toDateStr(date), topic: '', notes: '', dutyTeacher: '' })
     setCreateError('')
     setShowCreate(true)
   }
@@ -451,6 +460,7 @@ function ScheduleTab() {
         timeSlot: createForm.timeSlot,
         topic: createForm.topic,
         notes: createForm.notes,
+        dutyTeacher: createForm.dutyTeacher,
       })
       setShowCreate(false)
       loadWeek()
@@ -469,75 +479,106 @@ function ScheduleTab() {
     setWeekStart(getMonday(new Date(ds + 'T00:00')))
   }
 
+  // Stats
+  const totalSlots = ROOMS.length * SLOTS.length * 7
+  const filledSlots = sessions.length
+  const fillRate = totalSlots > 0 ? Math.round((filledSlots / totalSlots) * 100) : 0
+
   return (
     <div className="flex gap-4">
-      {/* Mini Calendar sidebar */}
-      <div className="flex-shrink-0">
-        <MiniCalendar selectedDate={toDateStr(weekStart)} onSelect={handleCalendarSelect} sessionDates={sessionDates} mode="week" />
+      {/* Left: Mini calendar + legend + stats */}
+      <div className="flex-shrink-0 space-y-3 w-64">
+        <MiniCalendar selectedDate={toDateStr(weekStart)} onSelect={(ds: string) => setWeekStart(getMonday(new Date(ds + 'T00:00')))} sessionDates={sessionDates} mode="week" />
+
+        {/* Stats */}
+        <div className="bg-white rounded-xl border border-gray-100 p-3 text-xs space-y-2">
+          <div className="flex justify-between text-gray-600">
+            <span>Tuần này</span>
+            <span className="font-bold text-red-600">{filledSlots}</span>
+          </div>
+          <div className="flex justify-between text-gray-600">
+            <span>Tỷ lệ lấp đầy</span>
+            <span className="font-bold text-amber-600">{fillRate}%</span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-1.5">
+            <div className="bg-red-500 h-1.5 rounded-full transition-all" style={{ width: `${fillRate}%` }} />
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="bg-white rounded-xl border border-gray-100 p-3 space-y-1.5 text-[11px] text-gray-500">
+          <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-red-50 border border-red-200 flex-shrink-0" /> Đã xếp lịch</div>
+          <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-amber-50 border border-amber-200 flex-shrink-0" /> Hôm nay</div>
+          <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-white border border-gray-200 flex-shrink-0" /> Trống</div>
+        </div>
       </div>
 
-      <div className="flex-1 space-y-4">
+      {/* Right: Week navigation + calendar grid */}
+      <div className="flex-1 space-y-3">
+
       {/* Week navigation */}
       <div className="flex items-center gap-3">
-        <button onClick={() => setWeekStart(addDays(weekStart, -7))} className="text-gray-400 hover:text-gray-700 text-lg">◀</button>
-        <h3 className="text-lg font-semibold text-gray-800">
+        <button onClick={() => setWeekStart(addDays(weekStart, -7))} className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition">◀</button>
+        <h3 className="text-base font-bold text-gray-900">
           {weekStart.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })} — {weekEnd.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
         </h3>
-        <button onClick={() => setWeekStart(addDays(weekStart, 7))} className="text-gray-400 hover:text-gray-700 text-lg">▶</button>
-        <button onClick={() => setWeekStart(getMonday(new Date()))} className="text-red-600 hover:text-red-800 text-sm ml-1">Tuần này</button>
+        <button onClick={() => setWeekStart(addDays(weekStart, 7))} className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition">▶</button>
+        <button onClick={() => setWeekStart(getMonday(new Date()))} className="text-red-600 hover:text-red-700 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition">Tuần này</button>
       </div>
 
-      {/* Calendar grid */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-auto">
+      {/* Calendar grid — compact */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-auto shadow-sm">
         <table className="w-full text-xs border-collapse">
           <thead>
-            <tr className="bg-gray-50">
-              <th className="px-2 py-2 text-left text-gray-500 w-24 border-r border-gray-100">Phòng / Ca</th>
+            <tr>
+              <th className="px-2 py-2 text-left text-gray-400 text-[10px] uppercase tracking-wider w-20 bg-gray-50 border-r border-b border-gray-100 sticky left-0 z-10">Phòng</th>
+              <th className="px-1 py-2 text-center text-gray-400 text-[10px] uppercase tracking-wider w-12 bg-gray-50 border-r border-b border-gray-100">Ca</th>
               {weekDates.map((d, i) => {
                 const isToday = toDateStr(d) === toDateStr(new Date())
                 return (
-                  <th key={i} className={`px-1 py-2 text-center border-r border-gray-100 ${isToday ? 'bg-blue-50 text-blue-700' : 'text-gray-600'}`}>
-                    <div className="font-semibold">{DAY_LABELS[i]}</div>
-                    <div className="text-[10px] font-normal">{d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</div>
+                  <th key={i} className={`px-1 py-2 text-center border-r border-b border-gray-100 min-w-[100px] ${isToday ? 'bg-amber-50 text-amber-700' : 'bg-gray-50 text-gray-600'}`}>
+                    <div className="font-bold text-[11px]">{DAY_LABELS[i]}</div>
+                    <div className="text-[10px] font-normal opacity-70">{d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</div>
                   </th>
                 )
               })}
             </tr>
           </thead>
           <tbody>
-            {ROOMS.map(room => SLOTS.map((slot, si) => (
-              <tr key={`${room}-${slot}`} className={si === 0 ? 'border-t-2 border-gray-200' : 'border-t border-gray-50'}>
-                <td className="px-2 py-1 text-gray-500 border-r border-gray-100 whitespace-nowrap">
-                  {si === 0 && <div className="font-semibold text-gray-700">{room}</div>}
-                  <div>{slot}</div>
+            {ROOMS.map((room, ri) => SLOTS.map((slot, si) => (
+              <tr key={`${room}-${slot}`}>
+                {/* Room name — only first row of each room, rowspan */}
+                {si === 0 && (
+                  <td rowSpan={SLOTS.length} className={`px-2 py-1 text-[10px] font-bold text-gray-700 border-r border-gray-100 bg-gray-100 align-middle text-center sticky left-0 z-10 ${ri > 0 ? 'border-t-2 border-t-gray-200' : ''}`}>
+                    {room}
+                  </td>
+                )}
+                {/* Slot label */}
+                <td className={`px-1 py-0.5 text-[9px] text-gray-400 border-r border-gray-100 text-center whitespace-nowrap ${si === 0 && ri > 0 ? 'border-t-2 border-t-gray-200' : 'border-t border-gray-50'}`}>
+                  {SLOT_SHORT[slot] ?? slot}
                 </td>
+                {/* Day cells */}
                 {weekDates.map((d, di) => {
                   const session = getSession(d, room, slot)
                   const isToday = toDateStr(d) === toDateStr(new Date())
+                  const isSelected = detailSession?.id === session?.id
                   return (
                     <td
                       key={di}
-                      className={`px-1 py-1 border-r border-gray-100 h-14 align-top transition ${
-                        isToday ? 'bg-blue-50/30' : ''
-                      } ${session ? 'hover:bg-blue-50' : isAdmin ? 'hover:bg-gray-50 cursor-pointer' : ''}`}
-                      onClick={() => !session && openCreate(d, room, slot)}
+                      className={`border-r h-7 align-middle cursor-pointer transition-all ${
+                        si === 0 && ri > 0 ? 'border-t-2 border-t-gray-200' : 'border-t border-gray-50'
+                      } ${isToday && !session ? 'bg-amber-50' : ''} ${
+                        session
+                          ? isSelected
+                            ? 'bg-red-200 shadow-inner'
+                            : 'bg-red-50 hover:bg-red-100'
+                          : isAdmin ? 'hover:bg-gray-50' : ''
+                      }`}
+                      onClick={() => session ? setDetailSession(session) : openCreate(d, room, slot)}
                     >
                       {session && (
-                        <div className="relative group">
-                          <div className="bg-red-100 text-red-800 rounded px-1 py-0.5 text-[11px] font-medium leading-tight">
-                            {session.className} {session.subject}
-                          </div>
-                          <div className="text-[10px] text-gray-500 truncate mt-0.5 px-0.5">
-                            {session.teacherName}
-                            {session.totalSessions && <span className="text-gray-400 ml-1">({session.sessionIndex}/{session.totalSessions})</span>}
-                          </div>
-                          {session.topic && <div className="text-[10px] text-gray-400 truncate px-0.5">{session.topic}</div>}
-                          {isAdmin && (
-                            <button
-                              onClick={e => { e.stopPropagation(); handleDelete(session) }}
-                              className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-[10px] px-1"
-                            >✕</button>
-                          )}
+                        <div className="px-1 truncate text-[10px] font-semibold text-center text-red-700">
+                          {session.teacherName ?? session.className} <span className="text-red-400 font-normal">· {session.className}</span>
                         </div>
                       )}
                     </td>
@@ -549,10 +590,47 @@ function ScheduleTab() {
         </table>
       </div>
 
+      </div>
+      {/* Right panel end */}
+
+      {/* Detail modal — floating overlay, không cần scroll */}
+      {detailSession && (
+        <div className="fixed inset-0 backdrop-blur-sm bg-gradient-to-br from-red-50 via-amber-50 to-white bg-opacity-80 flex items-center justify-center z-50" onClick={() => setDetailSession(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-5 w-full max-w-sm animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 bg-red-100 text-red-800 rounded-lg text-sm font-bold">{detailSession.className}</span>
+                <span className="text-sm text-gray-600 font-medium">{detailSession.subject}</span>
+              </div>
+              <button onClick={() => setDetailSession(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between text-gray-600">
+                <span>{new Date(detailSession.sessionDate).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' })}</span>
+                {detailSession.totalSessions && <span className="text-red-600 font-medium">Buổi {detailSession.sessionIndex}/{detailSession.totalSessions}</span>}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 rounded-lg p-3">
+                <div><span className="text-gray-400">Phòng:</span> <span className="font-medium text-gray-700">{detailSession.room}</span></div>
+                <div><span className="text-gray-400">Ca:</span> <span className="font-medium text-gray-700">{SLOT_SHORT[detailSession.timeSlot] ?? detailSession.timeSlot}</span></div>
+                <div><span className="text-gray-400">GV đứng lớp:</span> <span className="font-medium text-gray-700">{detailSession.teacherName ?? '—'}</span></div>
+                <div><span className="text-gray-400">GV trực ca:</span> <span className="font-medium text-amber-600">{detailSession.dutyTeacher || '—'}</span></div>
+              </div>
+              {detailSession.topic && <div className="text-xs"><span className="text-gray-400">Nội dung:</span> <span className="text-gray-700">{detailSession.topic}</span></div>}
+              {detailSession.notes && <div className="text-xs"><span className="text-gray-400">Ghi chú:</span> <span className="text-gray-500">{detailSession.notes}</span></div>}
+            </div>
+            {isAdmin && (
+              <div className="mt-4 pt-3 border-t border-gray-100 flex justify-end">
+                <button onClick={() => { handleDelete(detailSession); setDetailSession(null) }} className="text-red-500 hover:text-red-700 text-xs font-medium">Xóa buổi học</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Create session modal */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+        <div className="fixed inset-0 backdrop-blur-sm bg-gradient-to-br from-red-50 via-amber-50 to-white bg-opacity-80 flex items-center justify-center z-50" onClick={() => setShowCreate(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 p-6 w-full max-w-sm animate-fade-in" onClick={e => e.stopPropagation()}>
             <h3 className="font-semibold text-gray-800 mb-1">Tạo buổi học</h3>
             <p className="text-sm text-gray-400 mb-4">
               {createForm.room} · {createForm.timeSlot} · {new Date(createForm.date + 'T00:00').toLocaleDateString('vi-VN')}
@@ -583,6 +661,16 @@ function ScheduleTab() {
                 />
               </div>
               <div>
+                <label className="block text-xs text-gray-500 mb-1">GV trực ca</label>
+                <input
+                  type="text"
+                  value={createForm.dutyTeacher}
+                  onChange={e => setCreateForm(f => ({ ...f, dutyTeacher: e.target.value }))}
+                  placeholder="Tên giáo viên trực"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+              <div>
                 <label className="block text-xs text-gray-500 mb-1">Ghi chú</label>
                 <input
                   type="text"
@@ -600,7 +688,6 @@ function ScheduleTab() {
           </div>
         </div>
       )}
-      </div>
     </div>
   )
 }
