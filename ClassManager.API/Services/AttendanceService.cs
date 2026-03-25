@@ -7,12 +7,18 @@ namespace ClassManager.API.Services
 {
     public static class RoomList
     {
-        public static readonly string[] Valid = ["Phòng 1", "Phòng 2", "Phòng 3", "Phòng 4", "Phòng 5"];
+        public static readonly string[] Valid = ["Phòng 1", "Phòng 2", "Phòng 3A", "Phòng 3B", "Phòng 5"];
     }
 
     public static class TimeSlotList
     {
-        public static readonly string[] Valid = ["Sáng", "Chiều", "Tối"];
+        public static readonly string[] Valid = [
+            "Ca 1 (7h15-9h15)",
+            "Ca 2 (9h20-11h20)",
+            "Ca 3 (14h15-16h15)",
+            "Ca 4 (16h30-18h30)",
+            "Ca 5 (19h-21h)"
+        ];
     }
 
     public class AttendanceService
@@ -40,7 +46,7 @@ namespace ClassManager.API.Services
         private SessionResponse MapSession(Session s, int sessionIndex) => new(
             s.Id, s.ClassId, s.Class.Name, s.Class.Subject,
             s.Class.Teacher?.FullName,
-            s.SessionDate, s.Room, s.TimeSlot, s.Topic, s.Notes,
+            s.SessionDate, s.Room, s.TimeSlot, s.Topic, s.Notes, s.DutyTeacher,
             sessionIndex, s.Class.TotalSessions);
 
         public async Task<List<SessionResponse>> GetSessionsByWeekAsync(DateTime weekStart, int? teacherId = null)
@@ -116,19 +122,20 @@ namespace ClassManager.API.Services
 
             var session = new Session
             {
-                ClassId     = req.ClassId,
-                SessionDate = sessionDate,
-                Room        = req.Room,
-                TimeSlot    = req.TimeSlot,
-                Topic       = req.Topic.Trim(),
-                Notes       = req.Notes.Trim(),
+                ClassId      = req.ClassId,
+                SessionDate  = sessionDate,
+                Room         = req.Room,
+                TimeSlot     = req.TimeSlot,
+                Topic        = req.Topic.Trim(),
+                Notes        = req.Notes.Trim(),
+                DutyTeacher  = req.DutyTeacher.Trim(),
             };
             _db.Sessions.Add(session);
             await _db.SaveChangesAsync();
 
             var newIndex = await _db.Sessions.CountAsync(s => s.ClassId == req.ClassId);
             return new SessionResponse(session.Id, session.ClassId, cls.Name, cls.Subject,
-                cls.Teacher?.FullName, session.SessionDate, session.Room, session.TimeSlot, session.Topic, session.Notes,
+                cls.Teacher?.FullName, session.SessionDate, session.Room, session.TimeSlot, session.Topic, session.Notes, session.DutyTeacher,
                 newIndex, cls.TotalSessions);
         }
 

@@ -8,6 +8,7 @@ namespace ClassManager.API.Models
         public string TimeSlot { get; set; } = "";     // "Sáng" | "Chiều" | "Tối"
         public string Topic { get; set; } = "";
         public string Notes { get; set; } = "";
+        public string DutyTeacher { get; set; } = "";  // GV trực ca
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public int ClassId { get; set; }

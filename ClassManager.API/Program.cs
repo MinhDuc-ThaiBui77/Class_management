@@ -173,6 +173,14 @@ using (var scope = app.Services.CreateScope())
                 CREATE UNIQUE INDEX "IX_Payments_StudentId_ClassId"
                     ON "Payments" ("StudentId", "ClassId");
             END IF;
+            -- Thêm DutyTeacher vào Sessions (nếu chưa có)
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Sessions' AND column_name = 'DutyTeacher'
+            ) THEN
+                ALTER TABLE "Sessions" ADD COLUMN "DutyTeacher" text NOT NULL DEFAULT '';
+            END IF;
+
             -- Performance indexes
             CREATE INDEX IF NOT EXISTS "IX_StudentClasses_StudentId" ON "StudentClasses" ("StudentId");
             CREATE INDEX IF NOT EXISTS "IX_StudentClasses_ClassId" ON "StudentClasses" ("ClassId");
