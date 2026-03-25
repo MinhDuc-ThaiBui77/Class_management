@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using ClassManager.API.Models;
 using ClassManager.API.Models.DTOs;
 using ClassManager.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -15,11 +16,12 @@ namespace ClassManager.API.Controllers
         private readonly UserService       _userSvc;
         public AttendanceController(AttendanceService svc, UserService userSvc) { _svc = svc; _userSvc = userSvc; }
 
-        private int  CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        private bool IsAdmin       => User.IsInRole("admin");
+        private int    CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        private string CallerRole    => User.FindFirstValue(ClaimTypes.Role)!;
+        private bool   IsManagerUp   => Roles.IsAtLeast(CallerRole, Roles.Manager);
 
         private async Task<int?> CallerTeacherIdAsync() =>
-            IsAdmin ? null : await _userSvc.GetTeacherIdByUserIdAsync(CurrentUserId);
+            IsManagerUp ? null : await _userSvc.GetTeacherIdByUserIdAsync(CurrentUserId);
 
         [HttpGet("sessions")]
         public async Task<IActionResult> GetSessions([FromQuery] string? week = null)
@@ -30,8 +32,9 @@ namespace ClassManager.API.Controllers
             return Ok(await _svc.GetAllSessionsAsync(teacherId));
         }
 
+        // Copy week: manager+
         [HttpGet("sessions/copy-preview")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.ManagerUp)]
         public async Task<IActionResult> CopyPreview([FromQuery] string week)
         {
             if (!DateTime.TryParse(week, out var weekStart))
@@ -41,7 +44,7 @@ namespace ClassManager.API.Controllers
         }
 
         [HttpPost("sessions/copy-week")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.ManagerUp)]
         public async Task<IActionResult> CopyFromPreviousWeek([FromQuery] string week, [FromBody] List<int>? sessionIds = null)
         {
             if (!DateTime.TryParse(week, out var weekStart))
@@ -57,10 +60,17 @@ namespace ClassManager.API.Controllers
             }
         }
 
+        // Tạo buổi học: teacher tạo cho lớp mình, manager+ tạo tự do
         [HttpPost("sessions")]
-        [Authorize(Roles = "admin")]
         public async Task<IActionResult> CreateSession(SessionRequest req)
         {
+            // Teacher chỉ tạo session cho lớp mình
+            if (!IsManagerUp)
+            {
+                var tid = await CallerTeacherIdAsync();
+                if (!await _svc.IsTeacherOfSessionClassAsync(req.ClassId, tid))
+                    return Forbid();
+            }
             try
             {
                 var s = await _svc.CreateSessionAsync(req);
@@ -72,8 +82,9 @@ namespace ClassManager.API.Controllers
             }
         }
 
+        // Xóa buổi học: manager+ only
         [HttpDelete("sessions/{id}")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.ManagerUp)]
         public async Task<IActionResult> DeleteSession(int id)
         {
             var ok = await _svc.DeleteSessionAsync(id);
@@ -99,6 +110,7 @@ namespace ClassManager.API.Controllers
         public async Task<IActionResult> GetForSession(int sessionId)
             => Ok(await _svc.GetAttendanceForSessionAsync(sessionId));
 
+        // Điểm danh: tất cả role (teacher điểm danh lớp mình — service sẽ validate)
         [HttpPost]
         public async Task<IActionResult> Save(SaveAttendanceRequest req)
         {

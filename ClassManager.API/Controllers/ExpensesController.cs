@@ -1,3 +1,4 @@
+using ClassManager.API.Models;
 using ClassManager.API.Models.DTOs;
 using ClassManager.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -7,7 +8,7 @@ namespace ClassManager.API.Controllers
 {
     [ApiController]
     [Route("api/expenses")]
-    [Authorize(Roles = "admin")]
+    [Authorize(Roles = Roles.AdminUp)]
     public class ExpensesController : ControllerBase
     {
         private readonly ExpenseService _svc;

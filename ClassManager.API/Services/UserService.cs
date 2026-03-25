@@ -12,9 +12,14 @@ namespace ClassManager.API.Services
         public UserService(AppDbContext db) => _db = db;
 
         // ── Danh sách tài khoản (kèm teacher info nếu có) ─────────────
-        public async Task<List<UserResponse>> GetAllAsync()
+        public async Task<List<UserResponse>> GetAllAsync(string callerRole)
         {
-            return await _db.Users
+            var query = _db.Users.AsQueryable();
+            // Non-owner không thấy owner accounts
+            if (callerRole != Roles.Owner)
+                query = query.Where(u => u.Role != Roles.Owner);
+
+            return await query
                 .GroupJoin(_db.Teachers, u => u.Id, t => t.UserId, (u, ts) => new { u, t = ts.FirstOrDefault() })
                 .OrderBy(x => x.u.FullName)
                 .Select(x => new UserResponse(
@@ -42,7 +47,7 @@ namespace ClassManager.API.Services
         }
 
         // ── Tạo tài khoản mới ─────────────────────────────────────────
-        public async Task<(UserResponse? User, string? Error)> CreateAsync(CreateUserRequest req)
+        public async Task<(UserResponse? User, string? Error)> CreateAsync(CreateUserRequest req, string callerRole)
         {
             if (string.IsNullOrWhiteSpace(req.FullName))
                 return (null, "Họ tên không được để trống.");
@@ -50,13 +55,16 @@ namespace ClassManager.API.Services
                 return (null, "Email không được để trống.");
             if (string.IsNullOrWhiteSpace(req.Password) || req.Password.Length < 6)
                 return (null, "Mật khẩu phải có ít nhất 6 ký tự.");
-            if (req.Role != "admin" && req.Role != "teacher")
-                return (null, "Role không hợp lệ. Chọn 'admin' hoặc 'teacher'.");
+            if (!Roles.Assignable.Contains(req.Role))
+                return (null, $"Role không hợp lệ. Chọn: {string.Join(", ", Roles.Assignable)}.");
+            // Chỉ có thể tạo role thấp hơn mình
+            if (!Roles.IsAbove(callerRole, req.Role))
+                return (null, "Không có quyền tạo tài khoản với role này.");
             if (await _db.Users.AnyAsync(u => u.Email == req.Email.Trim().ToLower()))
                 return (null, "Email đã được sử dụng.");
 
             // Validate teacher linking
-            if (req.Role == "teacher" && req.ExistingTeacherId == null && string.IsNullOrWhiteSpace(req.TeacherSubject))
+            if (req.Role == Roles.Teacher && req.ExistingTeacherId == null && string.IsNullOrWhiteSpace(req.TeacherSubject))
                 return (null, "Tài khoản giáo viên phải được gán hồ sơ giáo viên.");
 
             if (req.ExistingTeacherId.HasValue)
@@ -84,7 +92,7 @@ namespace ClassManager.API.Services
             int? teacherId = null;
             string? teacherName = null;
 
-            if (req.Role == "teacher")
+            if (req.Role == Roles.Teacher)
             {
                 if (req.ExistingTeacherId.HasValue)
                 {
@@ -116,20 +124,26 @@ namespace ClassManager.API.Services
         }
 
         // ── Cập nhật tên, role, teacher link ─────────────────────────
-        public async Task<(UserResponse? User, string? Error)> UpdateAsync(int id, UpdateUserRequest req, int requesterId)
+        public async Task<(UserResponse? User, string? Error)> UpdateAsync(int id, UpdateUserRequest req, int requesterId, string callerRole)
         {
             if (string.IsNullOrWhiteSpace(req.FullName))
                 return (null, "Họ tên không được để trống.");
-            if (req.Role != "admin" && req.Role != "teacher")
-                return (null, "Role không hợp lệ. Chọn 'admin' hoặc 'teacher'.");
+            if (!Roles.Assignable.Contains(req.Role))
+                return (null, $"Role không hợp lệ. Chọn: {string.Join(", ", Roles.Assignable)}.");
 
             var user = await _db.Users.FindAsync(id);
             if (user == null) return (null, null);
 
-            if (user.Id == requesterId && req.Role != "admin")
+            // Không thể sửa user có role >= mình (trừ owner)
+            if (!Roles.IsAbove(callerRole, user.Role) && callerRole != Roles.Owner)
+                return (null, "Không có quyền sửa tài khoản này.");
+            // Không thể gán role >= mình
+            if (!Roles.IsAbove(callerRole, req.Role) && callerRole != Roles.Owner)
+                return (null, "Không có quyền gán role này.");
+            if (user.Id == requesterId && req.Role != user.Role)
                 return (null, "Không thể tự thay đổi role của chính mình.");
 
-            if (req.Role == "teacher" && req.ExistingTeacherId == null && string.IsNullOrWhiteSpace(req.TeacherSubject))
+            if (req.Role == Roles.Teacher && req.ExistingTeacherId == null && string.IsNullOrWhiteSpace(req.TeacherSubject))
             {
                 // Chỉ validate nếu user chưa có teacher profile
                 var existingLink = await _db.Teachers.AnyAsync(t => t.UserId == id);
@@ -149,8 +163,8 @@ namespace ClassManager.API.Services
             if (!string.IsNullOrWhiteSpace(req.TeacherSubject) && !SubjectList.Valid.Contains(req.TeacherSubject))
                 return (null, $"Môn học không hợp lệ. Chọn: {string.Join(", ", SubjectList.Valid)}");
 
-            // Nếu đổi từ teacher → admin: unlink teacher profile cũ
-            if (user.Role == "teacher" && req.Role == "admin")
+            // Nếu đổi từ teacher → role khác: unlink teacher profile cũ
+            if (user.Role == Roles.Teacher && req.Role != Roles.Teacher)
             {
                 var oldTeacher = await _db.Teachers.FirstOrDefaultAsync(t => t.UserId == id);
                 if (oldTeacher != null) oldTeacher.UserId = null;
@@ -161,7 +175,7 @@ namespace ClassManager.API.Services
             await _db.SaveChangesAsync();
 
             // Xử lý link teacher mới
-            if (req.Role == "teacher")
+            if (req.Role == Roles.Teacher)
             {
                 if (req.ExistingTeacherId.HasValue)
                 {
@@ -202,12 +216,14 @@ namespace ClassManager.API.Services
         }
 
         // ── Reset mật khẩu ────────────────────────────────────────────
-        public async Task<(bool Ok, string? Error)> ResetPasswordAsync(int id, ResetPasswordRequest req, int requesterId)
+        public async Task<(bool Ok, string? Error)> ResetPasswordAsync(int id, ResetPasswordRequest req, int requesterId, string callerRole)
         {
             if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
                 return (false, "Mật khẩu phải có ít nhất 6 ký tự.");
             var user = await _db.Users.FindAsync(id);
             if (user == null) return (false, null);
+            if (!Roles.IsAbove(callerRole, user.Role) && callerRole != Roles.Owner)
+                return (false, "Không có quyền reset mật khẩu tài khoản này.");
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
             await _db.SaveChangesAsync();
             return (true, null);
@@ -228,13 +244,16 @@ namespace ClassManager.API.Services
         }
 
         // ── Xóa tài khoản vĩnh viễn ──────────────────────────────────
-        public async Task<(bool Ok, string? Error)> DeleteAsync(int id, int requesterId)
+        public async Task<(bool Ok, string? Error)> DeleteAsync(int id, int requesterId, string callerRole)
         {
             if (id == requesterId)
                 return (false, "Không thể xóa tài khoản của chính mình.");
 
             var user = await _db.Users.FindAsync(id);
             if (user == null) return (false, null);
+
+            if (!Roles.IsAbove(callerRole, user.Role) && callerRole != Roles.Owner)
+                return (false, "Không có quyền xóa tài khoản này.");
 
             // Deactivate teacher profile nếu có
             var teacher = await _db.Teachers.FirstOrDefaultAsync(t => t.UserId == id);
@@ -250,12 +269,14 @@ namespace ClassManager.API.Services
         }
 
         // ── Toggle active/inactive ────────────────────────────────────
-        public async Task<(UserResponse? User, string? Error)> ToggleActiveAsync(int id, int requesterId)
+        public async Task<(UserResponse? User, string? Error)> ToggleActiveAsync(int id, int requesterId, string callerRole)
         {
             var user = await _db.Users.FindAsync(id);
             if (user == null) return (null, null);
             if (user.Id == requesterId)
                 return (null, "Không thể tự vô hiệu hóa tài khoản của chính mình.");
+            if (!Roles.IsAbove(callerRole, user.Role) && callerRole != Roles.Owner)
+                return (null, "Không có quyền thay đổi trạng thái tài khoản này.");
             user.IsActive = !user.IsActive;
 
             // Sync trạng thái teacher theo account

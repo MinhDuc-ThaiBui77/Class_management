@@ -29,7 +29,7 @@ interface PaymentData {
 }
 
 export default function PaymentsPage() {
-  const { isAdmin } = useAuth()
+  const { canAdmin } = useAuth()
   const [data, setData] = useState<PaymentData | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [selected, setSelected] = useState<PaymentStatusItem | null>(null)
@@ -224,7 +224,7 @@ export default function PaymentsPage() {
                 </td>
                 <td className="px-4 py-3 text-gray-400 max-w-[120px] truncate">{s.notes || '—'}</td>
                 <td className="px-4 py-3 text-right flex items-center justify-end gap-2">
-                  {isAdmin && !s.isPaid && s.hasClass && (
+                  {!s.isPaid && s.hasClass && (
                     <button
                       onClick={() => openRecord(s)}
                       className="text-red-600 hover:text-red-700 text-xs font-medium"

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using ClassManager.API.Models;
 using ClassManager.API.Models.DTOs;
 using ClassManager.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -16,11 +17,12 @@ namespace ClassManager.API.Controllers
         private readonly ExportService  _exportSvc;
         public PaymentsController(PaymentService svc, UserService userSvc, ExportService exportSvc) { _svc = svc; _userSvc = userSvc; _exportSvc = exportSvc; }
 
-        private int  CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        private bool IsAdmin       => User.IsInRole("admin");
+        private int    CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        private string CallerRole    => User.FindFirstValue(ClaimTypes.Role)!;
+        private bool   IsManagerUp   => Roles.IsAtLeast(CallerRole, Roles.Manager);
 
         private async Task<int?> CallerTeacherIdAsync() =>
-            IsAdmin ? null : await _userSvc.GetTeacherIdByUserIdAsync(CurrentUserId);
+            IsManagerUp ? null : await _userSvc.GetTeacherIdByUserIdAsync(CurrentUserId);
 
         [HttpGet("export")]
         public async Task<IActionResult> Export([FromQuery] int? classId = null)
@@ -30,16 +32,24 @@ namespace ClassManager.API.Controllers
             return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
         }
 
+        // GET — teacher thấy lớp mình, manager+ thấy tất cả
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
             return Ok(await _svc.GetPaymentStatusAsync(await CallerTeacherIdAsync()));
         }
 
+        // POST — teacher ghi nhận thanh toán lớp mình, manager+ ghi nhận tự do
         [HttpPost]
-        [Authorize(Roles = "admin")]
         public async Task<IActionResult> Record(PaymentRequest req)
         {
+            // Teacher chỉ ghi nhận cho lớp mình
+            if (!IsManagerUp)
+            {
+                var tid = await CallerTeacherIdAsync();
+                if (!await _svc.IsTeacherOfPaymentClassAsync(req.ClassId, tid))
+                    return Forbid();
+            }
             try
             {
                 var p = await _svc.RecordPaymentAsync(req);
@@ -51,8 +61,9 @@ namespace ClassManager.API.Controllers
             }
         }
 
+        // DELETE — admin+ only
         [HttpDelete("{id}")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.AdminUp)]
         public async Task<IActionResult> Delete(int id)
         {
             var ok = await _svc.DeletePaymentAsync(id);

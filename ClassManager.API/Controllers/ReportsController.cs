@@ -1,3 +1,4 @@
+using ClassManager.API.Models;
 using ClassManager.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -6,13 +7,12 @@ namespace ClassManager.API.Controllers
 {
     [ApiController]
     [Route("api/reports")]
-    [Authorize(Roles = "admin")]
+    [Authorize(Roles = Roles.AdminUp)]
     public class ReportsController : ControllerBase
     {
         private readonly ReportService _svc;
         public ReportsController(ReportService svc) => _svc = svc;
 
-        // GET /api/reports/summary?period=month&year=2026&month=3
         [HttpGet("summary")]
         public async Task<IActionResult> GetSummary(
             [FromQuery] string period = "month",
@@ -24,7 +24,6 @@ namespace ClassManager.API.Controllers
             return Ok(result);
         }
 
-        // GET /api/reports/chart?year=2026
         [HttpGet("chart")]
         public async Task<IActionResult> GetChart([FromQuery] int year = 2026)
         {
@@ -32,7 +31,6 @@ namespace ClassManager.API.Controllers
             return Ok(result);
         }
 
-        // GET /api/reports/export?period=month&year=2026&month=3
         [HttpGet("export")]
         public async Task<IActionResult> Export(
             [FromQuery] string period = "month",

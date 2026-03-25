@@ -22,7 +22,7 @@ type SortDir = 'asc' | 'desc'
 const PAGE_SIZE = 20
 
 export default function StudentsPage() {
-  const { isAdmin } = useAuth()
+  const { canManage } = useAuth()
   const toast = useToast()
   const [students, setStudents] = useState<Student[]>([])
   const [search, setSearch] = useState('')
@@ -135,13 +135,11 @@ export default function StudentsPage() {
           <h2 className="text-xl font-bold text-gray-900">Học sinh</h2>
           <p className="text-sm text-gray-400">{students.length} học sinh</p>
         </div>
-        {isAdmin && (
-          <div className="flex gap-2">
-            <button onClick={async () => { const r = await studentsApi.export(); downloadBlob(r, 'danh-sach-hoc-sinh.xlsx') }} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 transition">Export Excel</button>
-            <button onClick={() => setShowImport(true)} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 transition">Import Excel</button>
-            <button onClick={openAdd} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition">+ Thêm học sinh</button>
-          </div>
-        )}
+        <div className="flex gap-2">
+          <button onClick={async () => { const r = await studentsApi.export(); downloadBlob(r, 'danh-sach-hoc-sinh.xlsx') }} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 transition">Export Excel</button>
+          {canManage && <button onClick={() => setShowImport(true)} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 transition">Import Excel</button>}
+          <button onClick={openAdd} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition">+ Thêm học sinh</button>
+        </div>
       </div>
 
       {/* Stat cards */}
@@ -165,7 +163,7 @@ export default function StudentsPage() {
       </div>
 
       {/* Bulk bar */}
-      {isAdmin && someSelected && (
+      {canManage && someSelected && (
         <div className="flex items-center gap-3 mb-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-sm animate-fade-in">
           <span className="text-red-700 font-medium">Đang chọn {selected.size} học sinh</span>
           <button onClick={() => setConfirmBulk(true)} disabled={bulkDeleting} className="ml-auto bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50">
@@ -177,27 +175,27 @@ export default function StudentsPage() {
 
       {/* Table */}
       {loading ? <TableSkeleton rows={8} cols={6} /> : sorted.length === 0 ? (
-        <EmptyState icon="👨‍🎓" title="Chưa có học sinh nào" description="Thêm học sinh mới hoặc import từ Excel" action={isAdmin ? { label: '+ Thêm học sinh', onClick: openAdd } : undefined} />
+        <EmptyState icon="👨‍🎓" title="Chưa có học sinh nào" description="Thêm học sinh mới hoặc import từ Excel" action={{ label: '+ Thêm học sinh', onClick: openAdd }} />
       ) : (
         <>
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                 <tr>
-                  {isAdmin && <th className="px-4 py-3 w-8"><input type="checkbox" checked={allSelected} ref={el => { if (el) el.indeterminate = someSelected && !allSelected }} onChange={toggleAll} className="cursor-pointer rounded" /></th>}
+                  {canManage && <th className="px-4 py-3 w-8"><input type="checkbox" checked={allSelected} ref={el => { if (el) el.indeterminate = someSelected && !allSelected }} onChange={toggleAll} className="cursor-pointer rounded" /></th>}
                   <th className="px-4 py-3 text-left w-10">STT</th>
                   <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => handleSort('fullName')}>Họ tên <SortIcon col="fullName" /></th>
                   <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => handleSort('address')}>Địa chỉ <SortIcon col="address" /></th>
                   <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => handleSort('classCount')}>Lớp <SortIcon col="classCount" /></th>
                   <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => handleSort('enrolledDate')}>Ngày nhập học <SortIcon col="enrolledDate" /></th>
                   <th className="px-4 py-3 text-left">Ghi chú</th>
-                  {isAdmin && <th className="px-4 py-3"></th>}
+                  <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {paged.map((s, idx) => (
                   <tr key={s.id} className={`transition ${selected.has(s.id) ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
-                    {isAdmin && <td className="px-4 py-3"><input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleOne(s.id)} className="cursor-pointer rounded" /></td>}
+                    {canManage && <td className="px-4 py-3"><input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleOne(s.id)} className="cursor-pointer rounded" /></td>}
                     <td className="px-4 py-3 text-gray-400 text-xs">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="px-4 py-3 font-medium text-gray-800">{s.fullName}</td>
                     <td className="px-4 py-3 text-gray-500 max-w-[180px] truncate">{s.address || '—'}</td>
@@ -220,12 +218,10 @@ export default function StudentsPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-500">{s.enrolledDate ? new Date(s.enrolledDate).toLocaleDateString('vi-VN') : ''}</td>
                     <td className="px-4 py-3 text-gray-400 max-w-xs truncate">{s.notes}</td>
-                    {isAdmin && (
-                      <td className="px-4 py-3 text-right space-x-2">
-                        <button onClick={() => openEdit(s)} className="text-red-600 hover:text-red-700 text-xs font-medium">Sửa</button>
-                        <button onClick={() => setConfirmDelete(s)} className="text-red-400 hover:text-red-600 text-xs">Xóa</button>
-                      </td>
-                    )}
+                    <td className="px-4 py-3 text-right space-x-2">
+                      <button onClick={() => openEdit(s)} className="text-red-600 hover:text-red-700 text-xs font-medium">Sửa</button>
+                      {canManage && <button onClick={() => setConfirmDelete(s)} className="text-red-400 hover:text-red-600 text-xs">Xóa</button>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

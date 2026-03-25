@@ -83,6 +83,13 @@ namespace ClassManager.API.Services
             );
         }
 
+        /// <summary>Kiểm tra classId có thuộc teacher không</summary>
+        public async Task<bool> IsTeacherOfPaymentClassAsync(int classId, int? teacherId)
+        {
+            if (teacherId == null) return false;
+            return await _db.Classes.AnyAsync(c => c.Id == classId && c.TeacherId == teacherId.Value);
+        }
+
         public async Task<Payment> RecordPaymentAsync(PaymentRequest req)
         {
             if (req.Amount <= 0)

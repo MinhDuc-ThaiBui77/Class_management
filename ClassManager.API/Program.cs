@@ -200,18 +200,25 @@ using (var scope = app.Services.CreateScope())
         END $$;
         """);
 
-    // Đảm bảo tài khoản admin mặc định luôn tồn tại
-    if (!db.Users.Any(u => u.Email == "admin@classmanager.local"))
+    // Đảm bảo tài khoản owner mặc định luôn tồn tại
+    if (!db.Users.Any(u => u.Role == ClassManager.API.Models.Roles.Owner))
     {
         db.Users.Add(new ClassManager.API.Models.User
         {
-            FullName     = "Administrator",
+            FullName     = "System Owner",
             Email        = "admin@classmanager.local",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123"),
-            Role         = "admin",
+            Role         = ClassManager.API.Models.Roles.Owner,
         });
         db.SaveChanges();
-        Console.WriteLine("✓ Admin mặc định đã được tạo: admin@classmanager.local / Admin@123");
+        Console.WriteLine("✓ Owner mặc định đã được tạo: admin@classmanager.local / Admin@123");
+    }
+    // Nâng cấp admin cũ lên owner (nếu có từ trước)
+    var legacyAdmin = db.Users.FirstOrDefault(u => u.Email == "admin@classmanager.local" && u.Role == "admin");
+    if (legacyAdmin != null)
+    {
+        legacyAdmin.Role = ClassManager.API.Models.Roles.Owner;
+        db.SaveChanges();
     }
 }
 

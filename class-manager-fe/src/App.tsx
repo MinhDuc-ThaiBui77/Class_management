@@ -28,8 +28,8 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { isAdmin } = useAuth()
-  return isAdmin ? <>{children}</> : <Navigate to="/students" replace />
+  const { canAdmin } = useAuth()
+  return canAdmin ? <>{children}</> : <Navigate to="/students" replace />
 }
 
 function AppRoutes() {
