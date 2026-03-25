@@ -200,8 +200,32 @@ using (var scope = app.Services.CreateScope())
         END $$;
         """);
 
-    // Đảm bảo tài khoản owner mặc định luôn tồn tại
-    if (!db.Users.Any(u => u.Role == ClassManager.API.Models.Roles.Owner))
+    // ── Owner seed từ env var (production) hoặc hardcode (dev) ──
+    var ownerEmail = builder.Configuration["Owner:Email"];
+    var ownerPassword = builder.Configuration["Owner:Password"];
+
+    if (!string.IsNullOrEmpty(ownerEmail) && !string.IsNullOrEmpty(ownerPassword))
+    {
+        var existingOwner = db.Users.FirstOrDefault(u => u.Email == ownerEmail);
+        if (existingOwner == null)
+        {
+            db.Users.Add(new ClassManager.API.Models.User
+            {
+                FullName     = "System Owner",
+                Email        = ownerEmail,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(ownerPassword),
+                Role         = ClassManager.API.Models.Roles.Owner,
+            });
+            db.SaveChanges();
+            Console.WriteLine($"✓ Owner đã được tạo: {ownerEmail}");
+        }
+        else if (existingOwner.Role != ClassManager.API.Models.Roles.Owner)
+        {
+            existingOwner.Role = ClassManager.API.Models.Roles.Owner;
+            db.SaveChanges();
+        }
+    }
+    else if (app.Environment.IsDevelopment() && !db.Users.Any(u => u.Role == ClassManager.API.Models.Roles.Owner))
     {
         db.Users.Add(new ClassManager.API.Models.User
         {
@@ -211,14 +235,19 @@ using (var scope = app.Services.CreateScope())
             Role         = ClassManager.API.Models.Roles.Owner,
         });
         db.SaveChanges();
-        Console.WriteLine("✓ Owner mặc định đã được tạo: admin@classmanager.local / Admin@123");
+        Console.WriteLine("✓ [DEV] Owner: admin@classmanager.local / Admin@123");
     }
-    // Nâng cấp admin cũ lên owner (nếu có từ trước)
-    var legacyAdmin = db.Users.FirstOrDefault(u => u.Email == "admin@classmanager.local" && u.Role == "admin");
-    if (legacyAdmin != null)
+
+    // Xóa account seed cũ trên production
+    if (!app.Environment.IsDevelopment())
     {
-        legacyAdmin.Role = ClassManager.API.Models.Roles.Owner;
-        db.SaveChanges();
+        var seedAccount = db.Users.FirstOrDefault(u => u.Email == "admin@classmanager.local");
+        if (seedAccount != null)
+        {
+            db.Users.Remove(seedAccount);
+            db.SaveChanges();
+            Console.WriteLine("✓ Đã xóa account seed mặc định.");
+        }
     }
 }
 
@@ -233,6 +262,32 @@ app.UseExceptionHandler(errApp => errApp.Run(async ctx =>
 
 app.UseCors();
 app.UseAuthentication();
+
+// Middleware: reject token của user đã bị vô hiệu hóa
+app.Use(async (ctx, next) =>
+{
+    if (ctx.User.Identity?.IsAuthenticated == true)
+    {
+        var userIdClaim = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(userIdClaim, out var userId))
+        {
+            var db = ctx.RequestServices.GetRequiredService<AppDbContext>();
+            var isActive = await db.Users
+                .Where(u => u.Id == userId)
+                .Select(u => u.IsActive)
+                .FirstOrDefaultAsync();
+            if (!isActive)
+            {
+                ctx.Response.StatusCode = 401;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsJsonAsync(new { message = "Tài khoản đã bị vô hiệu hóa." });
+                return;
+            }
+        }
+    }
+    await next();
+});
+
 app.UseAuthorization();
 app.MapControllers();
 
