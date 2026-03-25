@@ -4,9 +4,10 @@ import { ToastProvider } from './components/Toast'
 import Layout from './components/Layout'
 import { lazy, Suspense } from 'react'
 
-// Eager load: pages users see first
+// Eager load: frequently used pages
 import LoginPage from './pages/LoginPage'
 import StudentsPage from './pages/StudentsPage'
+import ReportPage from './pages/ReportPage'
 
 // Lazy load: less frequently accessed pages
 const TeachersPage = lazy(() => import('./pages/TeachersPage'))
@@ -14,7 +15,6 @@ const ClassesPage = lazy(() => import('./pages/ClassesPage'))
 const AttendancePage = lazy(() => import('./pages/AttendancePage'))
 const PaymentsPage = lazy(() => import('./pages/PaymentsPage'))
 const AccountsPage = lazy(() => import('./pages/AccountsPage'))
-const ReportPage = lazy(() => import('./pages/ReportPage'))
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">

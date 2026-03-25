@@ -42,43 +42,56 @@ namespace ClassManager.API.Services
             var (startDate, endDate) = GetDateRange(period, year, month, quarter);
             var (sm, sy, em, ey) = GetMonthRange(period, year, month, quarter);
 
-            // Revenue (không lọc IsActive — tiền đã thu là đã thu)
-            var validRevenue = await _db.Payments
-                .Where(p => p.ClassId > 0 && p.PaidDate >= startDate && p.PaidDate <= endDate)
-                .SumAsync(p => (decimal?)p.Amount) ?? 0;
-
-            var expectedRevenue = await _db.StudentClasses
-                .Where(sc => sc.Student.IsActive)
-                .SumAsync(sc => sc.Class.TuitionFee ?? 0);
-
-            // Teacher + expense cost
-            var teacherBreakdown = await GetTeacherBreakdownAsync(sm, sy, em, ey);
-            var teacherCost = teacherBreakdown.Sum(t => t.Total);
-            var expenseCost = await GetExpenseCostAsync(sm, sy, em, ey);
-            var expenseBreakdown = await GetExpenseBreakdownAsync(sm, sy, em, ey);
-
-            var totalCost = teacherCost + expenseCost;
-            var profit = validRevenue - totalCost;
-
-            // Collection rate (trên HS active)
-            var activeEnrollments = await _db.StudentClasses
-                .Where(sc => sc.Student.IsActive)
-                .Select(sc => new { sc.StudentId, sc.ClassId })
-                .ToListAsync();
-            var activeSet = new HashSet<(int, int)>(activeEnrollments.Select(e => (e.StudentId, e.ClassId)));
-            var totalEnrollments = activeEnrollments.Count;
-
-            var allPaid = await _db.Payments
+            // ── Gộp A: 1 query Payments → revenue + paid list ──
+            var allPayments = await _db.Payments
                 .Where(p => p.ClassId > 0)
-                .Select(p => new { p.StudentId, p.ClassId })
+                .Select(p => new { p.StudentId, p.ClassId, p.Amount, p.PaidDate })
                 .ToListAsync();
-            var paidActiveCount = allPaid.Count(p => activeSet.Contains((p.StudentId, p.ClassId)));
+
+            var validRevenue = allPayments
+                .Where(p => p.PaidDate >= startDate && p.PaidDate <= endDate)
+                .Sum(p => p.Amount);
+
+            // ── Gộp B: 1 query StudentClasses → expectedRevenue + enrollments + studentCount ──
+            var enrollmentData = await _db.StudentClasses
+                .Where(sc => sc.Student.IsActive)
+                .Select(sc => new { sc.StudentId, sc.ClassId, TuitionFee = sc.Class.TuitionFee ?? 0 })
+                .ToListAsync();
+
+            var expectedRevenue = enrollmentData.Sum(e => e.TuitionFee);
+            var totalEnrollments = enrollmentData.Count;
+            var activeSet = new HashSet<(int, int)>(enrollmentData.Select(e => (e.StudentId, e.ClassId)));
+            var enrolledStudentCount = enrollmentData.Select(e => e.StudentId).Distinct().Count();
+            var totalActiveStudents = await _db.Students.CountAsync(s => s.IsActive);
+            var noClassStudents = totalActiveStudents - enrolledStudentCount;
+
+            // Collection rate
+            var paidActiveCount = allPayments.Count(p => activeSet.Contains((p.StudentId, p.ClassId)));
             var collectionRate = totalEnrollments > 0
                 ? Math.Round((decimal)paidActiveCount / totalEnrollments * 100, 1) : 0;
 
-            var totalActiveStudents = await _db.Students.CountAsync(s => s.IsActive);
-            var enrolledStudentCount = activeEnrollments.Select(e => e.StudentId).Distinct().Count();
-            var noClassStudents = totalActiveStudents - enrolledStudentCount;
+            // ── Q3: Teacher breakdown (giữ nguyên 1 query) ──
+            var teacherBreakdown = await GetTeacherBreakdownAsync(sm, sy, em, ey);
+            var teacherCost = teacherBreakdown.Sum(t => t.Total);
+
+            // ── Gộp C: 1 query Expenses → cost + breakdown ──
+            var allExpenses = await _db.Expenses.ToListAsync();
+            var expStartDate = new DateTime(sy, sm, 1, 0, 0, 0, DateTimeKind.Utc);
+            var expEndDate = new DateTime(ey, em, DateTime.DaysInMonth(ey, em), 23, 59, 59, DateTimeKind.Utc);
+            var monthCount = ((ey - sy) * 12) + (em - sm) + 1;
+
+            var nonRecurring = allExpenses.Where(e => !e.IsRecurring && e.ExpenseDate >= expStartDate && e.ExpenseDate <= expEndDate).Sum(e => e.Amount);
+            var recurringMonthly = allExpenses.Where(e => e.IsRecurring).Sum(e => e.Amount);
+            var expenseCost = nonRecurring + (recurringMonthly * monthCount);
+
+            var expenseBreakdown = allExpenses
+                .Where(e => e.IsRecurring || (e.ExpenseDate >= expStartDate && e.ExpenseDate <= expEndDate))
+                .OrderByDescending(e => e.ExpenseDate)
+                .Select(e => new ExpenseResponse(e.Id, e.Title, e.Amount, e.ExpenseDate, e.IsRecurring, e.Notes))
+                .ToList();
+
+            var totalCost = teacherCost + expenseCost;
+            var profit = validRevenue - totalCost;
 
             return new ReportSummary(
                 validRevenue, expectedRevenue, teacherCost, expenseCost, totalCost, profit,
@@ -111,16 +124,13 @@ namespace ClassManager.API.Services
                 .Select(c => new { c.Id, StudentCount = c.StudentClasses.Count(sc => sc.Student.IsActive) })
                 .ToDictionaryAsync(c => c.Id, c => c.StudentCount);
 
-            // 1 query: expenses
-            var nonRecurringByMonth = await _db.Expenses
+            // Gộp: 1 query expenses
+            var allExpenses = await _db.Expenses.ToListAsync();
+            var recurringMonthly = allExpenses.Where(e => e.IsRecurring).Sum(e => e.Amount);
+            var nonRecurringByMonth = allExpenses
                 .Where(e => !e.IsRecurring && e.ExpenseDate >= yearStart && e.ExpenseDate <= yearEnd)
                 .GroupBy(e => e.ExpenseDate.Month)
-                .Select(g => new { Month = g.Key, Total = g.Sum(e => e.Amount) })
-                .ToDictionaryAsync(x => x.Month, x => x.Total);
-
-            var recurringMonthly = await _db.Expenses
-                .Where(e => e.IsRecurring)
-                .SumAsync(e => (decimal?)e.Amount) ?? 0;
+                .ToDictionary(g => g.Key, g => g.Sum(e => e.Amount));
 
             var result = new List<MonthlyReportItem>();
             for (int m = 1; m <= 12; m++)
@@ -250,33 +260,6 @@ namespace ClassManager.API.Services
                 .ToList();
         }
 
-        private async Task<decimal> GetExpenseCostAsync(int sm, int sy, int em, int ey)
-        {
-            var startDate = new DateTime(sy, sm, 1, 0, 0, 0, DateTimeKind.Utc);
-            var endDate = new DateTime(ey, em, DateTime.DaysInMonth(ey, em), 23, 59, 59, DateTimeKind.Utc);
-            var monthCount = ((ey - sy) * 12) + (em - sm) + 1;
-
-            var nonRecurring = await _db.Expenses
-                .Where(e => !e.IsRecurring && e.ExpenseDate >= startDate && e.ExpenseDate <= endDate)
-                .SumAsync(e => (decimal?)e.Amount) ?? 0;
-
-            var recurringMonthly = await _db.Expenses
-                .Where(e => e.IsRecurring)
-                .SumAsync(e => (decimal?)e.Amount) ?? 0;
-
-            return nonRecurring + (recurringMonthly * monthCount);
-        }
-
-        private async Task<List<ExpenseResponse>> GetExpenseBreakdownAsync(int sm, int sy, int em, int ey)
-        {
-            var startDate = new DateTime(sy, sm, 1, 0, 0, 0, DateTimeKind.Utc);
-            var endDate = new DateTime(ey, em, DateTime.DaysInMonth(ey, em), 23, 59, 59, DateTimeKind.Utc);
-
-            return await _db.Expenses
-                .Where(e => e.IsRecurring || (e.ExpenseDate >= startDate && e.ExpenseDate <= endDate))
-                .OrderByDescending(e => e.ExpenseDate)
-                .Select(e => new ExpenseResponse(e.Id, e.Title, e.Amount, e.ExpenseDate, e.IsRecurring, e.Notes))
-                .ToListAsync();
-        }
+        // GetExpenseCostAsync + GetExpenseBreakdownAsync đã được inline vào GetSummaryAsync
     }
 }
