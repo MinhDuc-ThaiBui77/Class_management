@@ -221,6 +221,8 @@ function AttendanceTab() {
     setSessions(daySessions)
     setSelectedSession(null)
     setRecords([])
+    // Refresh calendar dots
+    attendanceApi.getSessions().then(r => setAllSessions(r.data))
   }
 
   const sessionDates = new Set(allSessions.map(s => s.sessionDate.slice(0, 10)))
@@ -443,6 +445,8 @@ function ScheduleTab() {
   const loadWeek = async () => {
     const res = await attendanceApi.getByWeek(toDateStr(weekStart))
     setSessions(res.data)
+    // Refresh calendar dots
+    attendanceApi.getSessions().then(r => setAllSessions(r.data))
   }
 
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
