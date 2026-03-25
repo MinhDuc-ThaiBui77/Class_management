@@ -179,10 +179,19 @@ export default function AccountsPage() {
     }
   }
 
-  const roleBadge = (role: string) =>
-    role === 'admin'
-      ? <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-full text-xs font-medium">Admin</span>
-      : <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs font-medium">Giáo viên</span>
+  const roleBadge = (role: string) => {
+    switch (role) {
+      case 'owner':
+      case 'admin':
+        return <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-full text-xs font-medium">
+          {role === 'owner' ? 'Admin' : 'Admin'}
+        </span>
+      case 'manager':
+        return <span className="px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full text-xs font-medium">Quản lý</span>
+      default:
+        return <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs font-medium">Giáo viên</span>
+    }
+  }
 
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
 
@@ -303,6 +312,7 @@ export default function AccountsPage() {
                   onChange={e => setCreateForm(f => ({ ...f, role: e.target.value, teacherSubject: '', teacherPhone: '' }))}
                   className={inputCls}>
                   <option value="teacher">Giáo viên</option>
+                  <option value="manager">Quản lý</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
@@ -362,6 +372,7 @@ export default function AccountsPage() {
                   onChange={e => setEditForm(f => ({ ...f, role: e.target.value, teacherSubject: '', teacherPhone: '' }))}
                   className={inputCls}>
                   <option value="teacher">Giáo viên</option>
+                  <option value="manager">Quản lý</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>

@@ -1,3 +1,4 @@
+using ClassManager.API.Models;
 using ClassManager.API.Models.DTOs;
 using ClassManager.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -22,7 +23,7 @@ namespace ClassManager.API.Controllers
         }
 
         [HttpPost("register")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.AdminUp)]
         public async Task<IActionResult> Register(RegisterRequest req)
         {
             var result = await _svc.RegisterAsync(req);

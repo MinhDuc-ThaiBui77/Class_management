@@ -13,10 +13,26 @@ interface AuthContextType {
   token: string | null
   login: (token: string, user: User) => void
   logout: () => void
-  isAdmin: boolean
+  // Role helpers
+  isAdmin: boolean      // admin or owner
+  isManager: boolean    // manager or above
+  isOwner: boolean      // owner only
+  canManage: boolean    // manager+ (quản lý lớp/HS/lịch/học phí)
+  canAdmin: boolean     // admin+ (tài khoản, báo cáo, chi phí)
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
+
+const ROLE_LEVEL: Record<string, number> = {
+  teacher: 1,
+  manager: 2,
+  admin: 3,
+  owner: 4,
+}
+
+function isAtLeast(userRole: string | undefined, required: string): boolean {
+  return (ROLE_LEVEL[userRole ?? ''] ?? 0) >= (ROLE_LEVEL[required] ?? 99)
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(
@@ -43,11 +59,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }
 
+  const role = user?.role
+
   return (
     <AuthContext.Provider value={{
       user, token,
       login, logout,
-      isAdmin: user?.role === 'admin'
+      isOwner:   role === 'owner',
+      isAdmin:   isAtLeast(role, 'admin'),
+      isManager: isAtLeast(role, 'manager'),
+      canManage: isAtLeast(role, 'manager'),
+      canAdmin:  isAtLeast(role, 'admin'),
     }}>
       {children}
     </AuthContext.Provider>

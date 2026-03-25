@@ -52,7 +52,7 @@ function parseName(name: string) {
 const emptyForm = { khoi: '', nhom: 'A', so: '1', subject: '', teacherId: '' as string | number, notes: '', totalSessions: '' as string | number, tuitionFee: '' as string | number, teacherSharePercent: '75' as string | number }
 
 export default function ClassesPage() {
-  const { isAdmin } = useAuth()
+  const { canManage } = useAuth()
   const [classes, setClasses] = useState<Class[]>([])
   const [showImport, setShowImport] = useState(false)
   const [showExportAttendance, setShowExportAttendance] = useState(false)
@@ -204,7 +204,7 @@ export default function ClassesPage() {
           <h2 className="text-xl font-bold text-gray-900">Lớp học</h2>
           <p className="text-sm text-gray-400">{classes.length} lớp · {classes.reduce((s, c) => s + c.studentCount, 0)} học sinh</p>
         </div>
-        {isAdmin && (
+        {canManage && (
           <button onClick={openAdd} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition">
             + Thêm lớp
           </button>
@@ -251,7 +251,7 @@ export default function ClassesPage() {
                   <h3 className="text-base font-bold text-gray-900">{cls.name}</h3>
                   <span className="text-xs px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full font-medium">{cls.subject}</span>
                 </div>
-                {isAdmin && (
+                {canManage && (
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
                     <button onClick={e => { e.stopPropagation(); openEdit(cls) }} className="text-gray-400 hover:text-red-600 text-xs font-medium">Sửa</button>
                     <button onClick={e => { e.stopPropagation(); handleDelete(cls) }} className="text-gray-400 hover:text-red-600 text-xs">Xóa</button>
@@ -327,12 +327,10 @@ export default function ClassesPage() {
                         <p className="text-sm font-medium text-gray-800">{s.fullName}</p>
                         <p className="text-xs text-gray-400">{s.address}</p>
                       </div>
-                      {isAdmin && (
-                        <button
-                          onClick={() => handleUnenroll(s.studentId)}
-                          className="text-red-400 hover:text-red-600 text-xs transition"
-                        >Xóa</button>
-                      )}
+                      <button
+                        onClick={() => handleUnenroll(s.studentId)}
+                        className="text-red-400 hover:text-red-600 text-xs transition"
+                      >Xóa</button>
                     </div>
                   ))}
                   {enrolled.length === 0 && (

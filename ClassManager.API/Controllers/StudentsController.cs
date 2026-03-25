@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using ClassManager.API.Models;
 using ClassManager.API.Models.DTOs;
 using ClassManager.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -18,12 +19,14 @@ namespace ClassManager.API.Controllers
         public StudentsController(StudentService svc, UserService userSvc, ImportService importSvc, ExportService exportSvc)
         { _svc = svc; _userSvc = userSvc; _importSvc = importSvc; _exportSvc = exportSvc; }
 
-        private int  CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        private bool IsAdmin       => User.IsInRole("admin");
+        private int    CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        private string CallerRole    => User.FindFirstValue(ClaimTypes.Role)!;
+        private bool   IsManagerUp   => Roles.IsAtLeast(CallerRole, Roles.Manager);
 
         private async Task<int?> CallerTeacherIdAsync() =>
-            IsAdmin ? null : await _userSvc.GetTeacherIdByUserIdAsync(CurrentUserId);
+            IsManagerUp ? null : await _userSvc.GetTeacherIdByUserIdAsync(CurrentUserId);
 
+        // GET — manager+ xem tất cả, teacher chỉ xem HS trong lớp mình
         [HttpGet]
         public async Task<IActionResult> GetAll([FromQuery] string? search)
             => Ok(await _svc.GetAllAsync(search, await CallerTeacherIdAsync()));
@@ -35,8 +38,9 @@ namespace ClassManager.API.Controllers
             return s == null ? NotFound() : Ok(s);
         }
 
+        // POST — teacher tạo HS (để enroll vào lớp mình), manager+ tạo tự do
         [HttpPost]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.ManagerUp + "," + Roles.Teacher)]
         public async Task<IActionResult> Create(StudentRequest req)
         {
             try
@@ -50,10 +54,17 @@ namespace ClassManager.API.Controllers
             }
         }
 
+        // PUT — teacher sửa info HS trong lớp mình, manager+ sửa tự do
         [HttpPut("{id}")]
-        [Authorize(Roles = "admin")]
         public async Task<IActionResult> Update(int id, StudentRequest req)
         {
+            // Teacher chỉ sửa HS trong lớp mình
+            if (!IsManagerUp)
+            {
+                var tid = await CallerTeacherIdAsync();
+                if (!await _svc.IsStudentOfTeacherAsync(id, tid))
+                    return Forbid();
+            }
             try
             {
                 var s = await _svc.UpdateAsync(id, req);
@@ -65,8 +76,9 @@ namespace ClassManager.API.Controllers
             }
         }
 
+        // DELETE — manager+ only
         [HttpDelete("{id}")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.ManagerUp)]
         public async Task<IActionResult> Delete(int id)
         {
             var ok = await _svc.DeleteAsync(id);
@@ -80,18 +92,16 @@ namespace ClassManager.API.Controllers
             return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "danh-sach-hoc-sinh.xlsx");
         }
 
-        // GET /api/students/import-template — tải file Excel mẫu
         [HttpGet("import-template")]
-        [Authorize(Roles = "admin")]
         public IActionResult GetImportTemplate()
         {
             var bytes = _importSvc.GenerateTemplate();
             return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "template-hoc-sinh.xlsx");
         }
 
-        // POST /api/students/import — import danh sách học sinh
+        // POST import — teacher import HS (sẽ enroll qua classes endpoint), manager+ import tự do
         [HttpPost("import")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.ManagerUp)]
         public async Task<IActionResult> Import(IFormFile file)
         {
             if (file == null || file.Length == 0)

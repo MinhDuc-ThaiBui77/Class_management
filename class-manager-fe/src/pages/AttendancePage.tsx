@@ -168,7 +168,7 @@ function toDateStr(d: Date) {
 function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(r.getDate() + n); return r }
 
 export default function AttendancePage() {
-  const { isAdmin } = useAuth()
+  const { canManage } = useAuth()
   const [tab, setTab] = useState<'attendance' | 'schedule'>('attendance')
 
   return (
@@ -419,7 +419,7 @@ function AttendanceTab() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function ScheduleTab() {
-  const { isAdmin } = useAuth()
+  const { canManage } = useAuth()
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()))
   const [sessions, setSessions] = useState<Session[]>([])
   const [allSessions, setAllSessions] = useState<Session[]>([])
@@ -452,7 +452,6 @@ function ScheduleTab() {
     sessions.find(s => s.sessionDate.slice(0, 10) === toDateStr(date) && s.room === room && s.timeSlot === slot)
 
   const openCreate = (date: Date, room: string, slot: string) => {
-    if (!isAdmin) return
     setCreateForm({ classId: '', room, timeSlot: slot, date: toDateStr(date), topic: '', notes: '', dutyTeacher: '' })
     setCreateError('')
     setShowCreate(true)
@@ -533,7 +532,7 @@ function ScheduleTab() {
         </h3>
         <button onClick={() => setWeekStart(addDays(weekStart, 7))} className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition">▶</button>
         <button onClick={() => setWeekStart(getMonday(new Date()))} className="text-red-600 hover:text-red-700 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition">Tuần này</button>
-        {isAdmin && (
+        {canManage && (
           <button
             onClick={async () => {
               try {
@@ -596,7 +595,7 @@ function ScheduleTab() {
                           ? isSelected
                             ? 'bg-red-200 shadow-inner'
                             : 'bg-red-50 hover:bg-red-100'
-                          : isAdmin ? 'hover:bg-gray-50' : ''
+                          : 'hover:bg-gray-50'
                       }`}
                       onClick={() => session ? setDetailSession(session) : openCreate(d, room, slot)}
                     >
@@ -642,7 +641,7 @@ function ScheduleTab() {
               {detailSession.topic && <div className="text-xs"><span className="text-gray-400">Nội dung:</span> <span className="text-gray-700">{detailSession.topic}</span></div>}
               {detailSession.notes && <div className="text-xs"><span className="text-gray-400">Ghi chú:</span> <span className="text-gray-500">{detailSession.notes}</span></div>}
             </div>
-            {isAdmin && (
+            {canManage && (
               <div className="mt-4 pt-3 border-t border-gray-100 flex justify-end">
                 <button onClick={() => { handleDelete(detailSession); setDetailSession(null) }} className="text-red-500 hover:text-red-700 text-xs font-medium">Xóa buổi học</button>
               </div>

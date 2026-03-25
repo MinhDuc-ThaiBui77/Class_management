@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using ClassManager.API.Models;
 using ClassManager.API.Models.DTOs;
 using ClassManager.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -16,19 +17,20 @@ namespace ClassManager.API.Controllers
         private readonly ExportService  _exportSvc;
         public TeachersController(TeacherService svc, UserService userSvc, ExportService exportSvc) { _svc = svc; _userSvc = userSvc; _exportSvc = exportSvc; }
 
-        private int  CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        private bool IsAdmin       => User.IsInRole("admin");
+        private int    CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        private string CallerRole    => User.FindFirstValue(ClaimTypes.Role)!;
+        private bool   IsManagerUp   => Roles.IsAtLeast(CallerRole, Roles.Manager);
 
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
-            // Admin thấy tất cả, teacher chỉ thấy bản thân
-            var userId = IsAdmin ? (int?)null : CurrentUserId;
+            // Manager+ thấy tất cả, teacher chỉ thấy bản thân
+            var userId = IsManagerUp ? (int?)null : CurrentUserId;
             return Ok(await _svc.GetAllAsync(userId));
         }
 
         [HttpGet("export")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.ManagerUp)]
         public async Task<IActionResult> Export()
         {
             var bytes = await _exportSvc.ExportTeachersAsync();
@@ -39,7 +41,7 @@ namespace ClassManager.API.Controllers
         public IActionResult GetSubjects() => Ok(SubjectList.Valid);
 
         [HttpGet("available-users")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.AdminUp)]
         public async Task<IActionResult> GetAvailableUsers() => Ok(await _svc.GetAvailableUsersAsync());
 
         [HttpGet("{id}")]
@@ -49,8 +51,9 @@ namespace ClassManager.API.Controllers
             return t == null ? NotFound() : Ok(t);
         }
 
+        // CRUD GV: admin+ only
         [HttpPost]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.AdminUp)]
         public async Task<IActionResult> Create(TeacherRequest req)
         {
             try
@@ -65,7 +68,7 @@ namespace ClassManager.API.Controllers
         }
 
         [HttpPut("{id}")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.AdminUp)]
         public async Task<IActionResult> Update(int id, TeacherRequest req)
         {
             try
@@ -80,7 +83,7 @@ namespace ClassManager.API.Controllers
         }
 
         [HttpDelete("{id}")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.AdminUp)]
         public async Task<IActionResult> Delete(int id)
         {
             var ok = await _svc.DeleteAsync(id);

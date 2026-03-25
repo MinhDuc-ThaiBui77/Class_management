@@ -97,6 +97,14 @@ namespace ClassManager.API.Services
             return true;
         }
 
+        /// <summary>Kiểm tra HS có thuộc lớp của teacher không</summary>
+        public async Task<bool> IsStudentOfTeacherAsync(int studentId, int? teacherId)
+        {
+            if (teacherId == null) return false;
+            return await _db.StudentClasses
+                .AnyAsync(sc => sc.StudentId == studentId && sc.Class.TeacherId == teacherId.Value);
+        }
+
         private static void Validate(StudentRequest req)
         {
             if (string.IsNullOrWhiteSpace(req.FullName))

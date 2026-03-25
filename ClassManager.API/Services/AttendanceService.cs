@@ -80,6 +80,13 @@ namespace ClassManager.API.Services
             return sessions.Select(s => MapSession(s, indexMap.GetValueOrDefault(s.Id, 0))).ToList();
         }
 
+        /// <summary>Kiểm tra classId có thuộc teacher không (dùng cho authorization)</summary>
+        public async Task<bool> IsTeacherOfSessionClassAsync(int classId, int? teacherId)
+        {
+            if (teacherId == null) return false;
+            return await _db.Classes.AnyAsync(c => c.Id == classId && c.TeacherId == teacherId.Value);
+        }
+
         public async Task<SessionResponse> CreateSessionAsync(SessionRequest req, int? callerTeacherId = null)
         {
             // Validate

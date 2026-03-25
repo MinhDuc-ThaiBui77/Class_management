@@ -36,12 +36,13 @@ namespace ClassManager.API.Services
             if (await _db.Users.AnyAsync(u => u.Email == req.Email))
                 return null; // Email đã tồn tại
 
+            var role = Roles.Assignable.Contains(req.Role) ? req.Role : Roles.Teacher;
             var user = new User
             {
                 FullName     = req.FullName,
                 Email        = req.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
-                Role         = req.Role,
+                Role         = role,
             };
 
             _db.Users.Add(user);

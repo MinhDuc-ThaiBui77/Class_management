@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using ClassManager.API.Models;
 using ClassManager.API.Models.DTOs;
 using ClassManager.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -19,10 +20,11 @@ namespace ClassManager.API.Controllers
         { _svc = svc; _userSvc = userSvc; _importSvc = importSvc; _exportSvc = exportSvc; }
 
         private int    CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        private bool   IsAdmin       => User.IsInRole("admin");
+        private string CallerRole    => User.FindFirstValue(ClaimTypes.Role)!;
+        private bool   IsManagerUp   => Roles.IsAtLeast(CallerRole, Roles.Manager);
 
         private async Task<int?> CallerTeacherIdAsync() =>
-            IsAdmin ? null : await _userSvc.GetTeacherIdByUserIdAsync(CurrentUserId);
+            IsManagerUp ? null : await _userSvc.GetTeacherIdByUserIdAsync(CurrentUserId);
 
         [HttpGet]
         public async Task<IActionResult> GetAll()
@@ -35,8 +37,9 @@ namespace ClassManager.API.Controllers
             return c == null ? NotFound() : Ok(c);
         }
 
+        // CRUD lớp: manager+
         [HttpPost]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.ManagerUp)]
         public async Task<IActionResult> Create(ClassRequest req)
         {
             try
@@ -49,7 +52,7 @@ namespace ClassManager.API.Controllers
         }
 
         [HttpPut("{id}")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.ManagerUp)]
         public async Task<IActionResult> Update(int id, ClassRequest req)
         {
             try
@@ -62,14 +65,14 @@ namespace ClassManager.API.Controllers
         }
 
         [HttpDelete("{id}")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = Roles.ManagerUp)]
         public async Task<IActionResult> Delete(int id)
         {
             var ok = await _svc.DeleteAsync(id);
             return ok ? NoContent() : NotFound();
         }
 
-        // ── Enroll / Unenroll ─────────────────────────────────────────
+        // ── Export ───────────────────────────────────────────────────────
 
         [HttpGet("{id}/export")]
         public async Task<IActionResult> ExportStudents(int id)
@@ -86,6 +89,8 @@ namespace ClassManager.API.Controllers
             return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"diem-danh-{id}{suffix}.xlsx");
         }
 
+        // ── Enroll / Unenroll — teacher toàn quyền lớp mình ─────────────
+
         [HttpGet("{id}/students")]
         public async Task<IActionResult> GetStudents(int id)
             => Ok(await _svc.GetStudentsAsync(id));
@@ -93,15 +98,24 @@ namespace ClassManager.API.Controllers
         [HttpPost("{id}/students")]
         public async Task<IActionResult> Enroll(int id, EnrollRequest req)
         {
-            if (!IsAdmin) { var tid = await CallerTeacherIdAsync(); if (!await _svc.IsTeacherOfClassAsync(id, tid)) return Forbid(); }
+            if (!IsManagerUp)
+            {
+                var tid = await CallerTeacherIdAsync();
+                if (!await _svc.IsTeacherOfClassAsync(id, tid)) return Forbid();
+            }
             var ok = await _svc.EnrollAsync(id, req.StudentId);
             return ok ? Ok() : Conflict(new { message = "Học sinh đã có trong lớp này." });
         }
 
         [HttpDelete("{id}/students/{studentId}")]
-        [Authorize(Roles = "admin")]
         public async Task<IActionResult> Unenroll(int id, int studentId)
         {
+            // Teacher cũng được rút HS khỏi lớp mình
+            if (!IsManagerUp)
+            {
+                var tid = await CallerTeacherIdAsync();
+                if (!await _svc.IsTeacherOfClassAsync(id, tid)) return Forbid();
+            }
             var ok = await _svc.UnenrollAsync(id, studentId);
             return ok ? NoContent() : NotFound();
         }
@@ -109,7 +123,12 @@ namespace ClassManager.API.Controllers
         [HttpPost("{id}/students/import")]
         public async Task<IActionResult> ImportStudents(int id, IFormFile file)
         {
-            if (!IsAdmin) { var tid = await CallerTeacherIdAsync(); if (!await _svc.IsTeacherOfClassAsync(id, tid)) return Forbid(); }
+            // Teacher import vào lớp mình
+            if (!IsManagerUp)
+            {
+                var tid = await CallerTeacherIdAsync();
+                if (!await _svc.IsTeacherOfClassAsync(id, tid)) return Forbid();
+            }
             if (file == null || file.Length == 0)
                 return BadRequest(new { message = "Vui lòng chọn file Excel." });
             if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))

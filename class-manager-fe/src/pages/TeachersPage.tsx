@@ -17,7 +17,7 @@ const subjectColors: Record<string, 'teal' | 'blue' | 'purple' | 'amber' | 'red'
 }
 
 export default function TeachersPage() {
-  const { isAdmin } = useAuth()
+  const { canAdmin } = useAuth()
   const toast = useToast()
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [loading, setLoading] = useState(true)
@@ -85,7 +85,7 @@ export default function TeachersPage() {
                   </div>
                 </div>
               </div>
-              {isAdmin && (
+              {canAdmin && (
                 <div className="mt-4 pt-3 border-t border-gray-50 flex justify-end opacity-0 group-hover:opacity-100 transition">
                   <button onClick={() => setConfirmDelete(t)} className="text-red-400 hover:text-red-600 text-xs font-medium">Xóa giáo viên</button>
                 </div>
