@@ -21,7 +21,7 @@ namespace ClassManager.API.Services
                     c.Id, c.Name, c.Subject, c.Notes,
                     c.StudentClasses.Count(sc => sc.Student.IsActive),
                     c.TeacherId, c.Teacher != null ? c.Teacher.FullName : null,
-                    c.TotalSessions, c.TuitionFee, c.Sessions.Count, c.StartDate))
+                    c.TotalSessions, c.TuitionFee, c.TeacherSharePercent, c.Sessions.Count, c.StartDate))
                 .ToListAsync();
         }
 
@@ -33,7 +33,7 @@ namespace ClassManager.API.Services
                 .FirstOrDefaultAsync(c => c.Id == id);
             if (c == null) return null;
             var sessionCount = await _db.Sessions.CountAsync(s => s.ClassId == c.Id);
-            return new ClassResponse(c.Id, c.Name, c.Subject, c.Notes, c.StudentClasses.Count(sc => sc.Student.IsActive), c.TeacherId, c.Teacher?.FullName, c.TotalSessions, c.TuitionFee, sessionCount, c.StartDate);
+            return new ClassResponse(c.Id, c.Name, c.Subject, c.Notes, c.StudentClasses.Count(sc => sc.Student.IsActive), c.TeacherId, c.Teacher?.FullName, c.TotalSessions, c.TuitionFee, c.TeacherSharePercent, sessionCount, c.StartDate);
         }
 
         public async Task<ClassResponse> CreateAsync(ClassRequest req)
@@ -47,6 +47,7 @@ namespace ClassManager.API.Services
                 TeacherId     = req.TeacherId,
                 TotalSessions            = req.TotalSessions,
                 TuitionFee               = req.TuitionFee,
+                TeacherSharePercent      = req.TeacherSharePercent,
                 StartDate = req.StartDate.HasValue ? DateTime.SpecifyKind(req.StartDate.Value, DateTimeKind.Utc) : null,
             };
             _db.Classes.Add(cls);
@@ -54,7 +55,7 @@ namespace ClassManager.API.Services
             var teacherName = req.TeacherId.HasValue
                 ? (await _db.Teachers.FindAsync(req.TeacherId.Value))?.FullName
                 : null;
-            return new ClassResponse(cls.Id, cls.Name, cls.Subject, cls.Notes, 0, cls.TeacherId, teacherName, cls.TotalSessions, cls.TuitionFee, 0, cls.StartDate);
+            return new ClassResponse(cls.Id, cls.Name, cls.Subject, cls.Notes, 0, cls.TeacherId, teacherName, cls.TotalSessions, cls.TuitionFee, cls.TeacherSharePercent, 0, cls.StartDate);
         }
 
         public async Task<ClassResponse?> UpdateAsync(int id, ClassRequest req)
@@ -67,6 +68,7 @@ namespace ClassManager.API.Services
             cls.Notes         = req.Notes.Trim();
             cls.TeacherId     = req.TeacherId;
             cls.TotalSessions           = req.TotalSessions ?? cls.TotalSessions;
+            cls.TeacherSharePercent     = req.TeacherSharePercent;
             cls.TuitionFee              = req.TuitionFee ?? cls.TuitionFee;
             cls.StartDate = req.StartDate.HasValue ? DateTime.SpecifyKind(req.StartDate.Value, DateTimeKind.Utc) : cls.StartDate;
             await _db.SaveChangesAsync();
@@ -74,7 +76,7 @@ namespace ClassManager.API.Services
                 ? (await _db.Teachers.FindAsync(req.TeacherId.Value))?.FullName
                 : null;
             var updatedSessionCount = await _db.Sessions.CountAsync(s => s.ClassId == cls.Id);
-            return new ClassResponse(cls.Id, cls.Name, cls.Subject, cls.Notes, cls.StudentClasses.Count, cls.TeacherId, teacherName, cls.TotalSessions, cls.TuitionFee, updatedSessionCount, cls.StartDate);
+            return new ClassResponse(cls.Id, cls.Name, cls.Subject, cls.Notes, cls.StudentClasses.Count, cls.TeacherId, teacherName, cls.TotalSessions, cls.TuitionFee, cls.TeacherSharePercent, updatedSessionCount, cls.StartDate);
         }
 
         public async Task<bool> DeleteAsync(int id)
@@ -119,6 +121,13 @@ namespace ClassManager.API.Services
             return true;
         }
 
+        public async Task<bool> IsTeacherOfClassAsync(int classId, int? teacherId)
+        {
+            if (!teacherId.HasValue) return false;
+            var cls = await _db.Classes.FindAsync(classId);
+            return cls?.TeacherId == teacherId.Value;
+        }
+
         private async Task ValidateAsync(ClassRequest req, int? excludeId = null)
         {
             if (string.IsNullOrWhiteSpace(req.Name))
@@ -128,11 +137,11 @@ namespace ClassManager.API.Services
             if (!SubjectList.Valid.Contains(req.Subject))
                 throw new InvalidOperationException($"Môn học không hợp lệ.");
 
-            // Check trùng tên lớp
+            // Check trùng (tên + môn)
             var dupName = await _db.Classes
-                .AnyAsync(c => c.Name == req.Name.Trim() && (excludeId == null || c.Id != excludeId.Value));
+                .AnyAsync(c => c.Name == req.Name.Trim() && c.Subject == req.Subject.Trim() && (excludeId == null || c.Id != excludeId.Value));
             if (dupName)
-                throw new InvalidOperationException($"Lớp \"{req.Name.Trim()}\" đã tồn tại. Vui lòng chọn tên khác.");
+                throw new InvalidOperationException($"Lớp \"{req.Name.Trim()} - {req.Subject.Trim()}\" đã tồn tại.");
 
             if (req.TeacherId.HasValue)
             {

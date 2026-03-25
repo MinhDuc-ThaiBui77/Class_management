@@ -139,6 +139,110 @@ namespace ClassManager.API.Services
                 newIndex, cls.TotalSessions);
         }
 
+        public async Task<List<object>> PreviewCopyWeekAsync(DateTime targetWeekStart)
+        {
+            var target = DateTime.SpecifyKind(targetWeekStart.Date, DateTimeKind.Utc);
+            var prevStart = target.AddDays(-7);
+
+            var prevSessions = await _db.Sessions
+                .Include(s => s.Class).ThenInclude(c => c.Teacher)
+                .Where(s => s.SessionDate >= prevStart && s.SessionDate < target)
+                .OrderBy(s => s.SessionDate).ThenBy(s => s.Room).ThenBy(s => s.TimeSlot)
+                .ToListAsync();
+
+            var result = new List<object>();
+            foreach (var prev in prevSessions)
+            {
+                var newDate = prev.SessionDate.AddDays(7);
+                var conflictSession = await _db.Sessions
+                    .Include(s => s.Class).ThenInclude(c => c.Teacher)
+                    .FirstOrDefaultAsync(s => s.SessionDate == newDate && s.Room == prev.Room && s.TimeSlot == prev.TimeSlot);
+                var conflict = conflictSession != null;
+                var conflictInfo = conflictSession != null
+                    ? $"{conflictSession.Class.Name} {conflictSession.Class.Subject} - {conflictSession.Class.Teacher?.FullName ?? "?"}"
+                    : null;
+
+                string? limitError = null;
+                if (prev.Class.TotalSessions != null)
+                {
+                    var count = await _db.Sessions.CountAsync(s => s.ClassId == prev.ClassId);
+                    if (count >= prev.Class.TotalSessions.Value)
+                        limitError = $"Đã đạt {prev.Class.TotalSessions} buổi";
+                }
+
+                result.Add(new
+                {
+                    sessionId = prev.Id,
+                    className = prev.Class.Name,
+                    subject = prev.Class.Subject,
+                    teacherName = prev.Class.Teacher?.FullName,
+                    room = prev.Room,
+                    timeSlot = prev.TimeSlot,
+                    fromDate = prev.SessionDate,
+                    toDate = newDate,
+                    dutyTeacher = prev.DutyTeacher,
+                    conflict,
+                    conflictInfo,
+                    limitError,
+                    canCopy = limitError == null, // conflict OK (sẽ ghi đè), chỉ limit mới block
+                });
+            }
+            return result;
+        }
+
+        public async Task<object> CopyFromPreviousWeekAsync(DateTime targetWeekStart, List<int>? sessionIds = null)
+        {
+            var target = DateTime.SpecifyKind(targetWeekStart.Date, DateTimeKind.Utc);
+            var prevStart = target.AddDays(-7);
+
+            var query = _db.Sessions.Include(s => s.Class)
+                .Where(s => s.SessionDate >= prevStart && s.SessionDate < target);
+            if (sessionIds != null && sessionIds.Count > 0)
+                query = query.Where(s => sessionIds.Contains(s.Id));
+
+            var prevSessions = await query.ToListAsync();
+            if (prevSessions.Count == 0)
+                throw new InvalidOperationException("Không có buổi học nào để copy.");
+
+            int created = 0, replaced = 0, skipped = 0;
+            foreach (var prev in prevSessions)
+            {
+                var newDate = prev.SessionDate.AddDays(7);
+
+                // Check session limit
+                if (prev.Class.TotalSessions != null)
+                {
+                    var count = await _db.Sessions.CountAsync(s => s.ClassId == prev.ClassId);
+                    if (count >= prev.Class.TotalSessions.Value) { skipped++; continue; }
+                }
+
+                // Delete conflict (overwrite)
+                var existing = await _db.Sessions
+                    .Include(s => s.Attendances)
+                    .FirstOrDefaultAsync(s => s.SessionDate == newDate && s.Room == prev.Room && s.TimeSlot == prev.TimeSlot);
+                if (existing != null)
+                {
+                    _db.Attendances.RemoveRange(existing.Attendances);
+                    _db.Sessions.Remove(existing);
+                    replaced++;
+                }
+
+                _db.Sessions.Add(new Session
+                {
+                    ClassId = prev.ClassId,
+                    SessionDate = newDate,
+                    Room = prev.Room,
+                    TimeSlot = prev.TimeSlot,
+                    Topic = "",
+                    Notes = prev.Notes,
+                    DutyTeacher = prev.DutyTeacher,
+                });
+                created++;
+            }
+            await _db.SaveChangesAsync();
+            return new { created, replaced, skipped };
+        }
+
         public async Task<bool> DeleteSessionAsync(int id)
         {
             var session = await _db.Sessions.FindAsync(id);

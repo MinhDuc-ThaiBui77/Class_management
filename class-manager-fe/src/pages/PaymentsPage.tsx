@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { paymentsApi, downloadBlob } from '../api'
+import CurrencyInput from '../components/CurrencyInput'
 import { useAuth } from '../hooks/useAuth'
 
 interface PaymentStatusItem {
@@ -298,13 +299,12 @@ export default function PaymentsPage() {
             <form onSubmit={handleRecord} className="space-y-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Số tiền (₫)</label>
-                <input
-                  type="number"
+                <CurrencyInput
                   value={amount}
-                  onChange={e => setAmount(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-                  min="1000"
+                  onChange={v => setAmount(v)}
+                  placeholder="500.000"
                   required
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
               </div>
               <div>

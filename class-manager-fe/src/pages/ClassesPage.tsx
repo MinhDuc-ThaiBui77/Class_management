@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { classesApi, studentsApi, teachersApi, downloadBlob } from '../api'
+import CurrencyInput from '../components/CurrencyInput'
 import { useAuth } from '../hooks/useAuth'
 import ImportModal from '../components/ImportModal'
 
@@ -48,12 +49,15 @@ function parseName(name: string) {
   return { khoi: '', nhom: 'A', so: '1' }
 }
 
-const emptyForm = { khoi: '', nhom: 'A', so: '1', subject: '', teacherId: '' as string | number, notes: '', totalSessions: '' as string | number, tuitionFee: '' as string | number }
+const emptyForm = { khoi: '', nhom: 'A', so: '1', subject: '', teacherId: '' as string | number, notes: '', totalSessions: '' as string | number, tuitionFee: '' as string | number, teacherSharePercent: '75' as string | number }
 
 export default function ClassesPage() {
   const { isAdmin } = useAuth()
   const [classes, setClasses] = useState<Class[]>([])
   const [showImport, setShowImport] = useState(false)
+  const [showExportAttendance, setShowExportAttendance] = useState(false)
+  const [exportMonth, setExportMonth] = useState(new Date().getMonth() + 1)
+  const [exportYear, setExportYear] = useState(new Date().getFullYear())
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Class | null>(null)
@@ -98,7 +102,7 @@ export default function ClassesPage() {
   const openEdit = (cls: Class) => {
     setEditing(cls)
     const parsed = parseName(cls.name)
-    setForm({ ...parsed, subject: cls.subject, teacherId: cls.teacherId ?? '', notes: cls.notes, totalSessions: cls.totalSessions ?? '', tuitionFee: cls.tuitionFee ?? '' })
+    setForm({ ...parsed, subject: cls.subject, teacherId: cls.teacherId ?? '', notes: cls.notes, totalSessions: cls.totalSessions ?? '', tuitionFee: cls.tuitionFee ?? '', teacherSharePercent: cls.teacherSharePercent ?? 75 })
     setError('')
     setShowForm(true)
   }
@@ -116,6 +120,7 @@ export default function ClassesPage() {
         notes: form.notes,
         totalSessions: form.totalSessions === '' ? null : Number(form.totalSessions),
         tuitionFee: form.tuitionFee === '' ? null : Number(form.tuitionFee),
+        teacherSharePercent: Number(form.teacherSharePercent) || 75,
       }
       if (editing) {
         await classesApi.update(editing.id, payload)
@@ -310,9 +315,9 @@ export default function ClassesPage() {
                 <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
                   <p className="text-sm font-medium text-gray-700">Đang học</p>
                   <div className="flex gap-2">
-                    <button onClick={async () => { const r = await classesApi.exportStudents(selected.id); downloadBlob(r, `lop-${selected.name}.xlsx`) }} className="text-xs text-gray-400 hover:text-gray-600 transition">Export DS</button>
-                    <button onClick={async () => { const r = await classesApi.exportAttendance(selected.id); downloadBlob(r, `diem-danh-${selected.name}.xlsx`) }} className="text-xs text-gray-400 hover:text-gray-600 transition">Export ĐD</button>
-                    {isAdmin && <button onClick={() => setShowImport(true)} className="text-xs text-red-600 hover:text-red-700 transition">Import</button>}
+                    <button onClick={async () => { const r = await classesApi.exportStudents(selected.id); downloadBlob(r, `lop-${selected.name}.xlsx`) }} className="text-xs text-gray-400 hover:text-gray-600 transition">Export Danh sách</button>
+                    <button onClick={() => setShowExportAttendance(true)} className="text-xs text-gray-400 hover:text-gray-600 transition">Export Điểm danh</button>
+                    <button onClick={() => setShowImport(true)} className="text-xs text-red-600 hover:text-red-700 transition">Import</button>
                   </div>
                 </div>
                 <div className="divide-y divide-gray-50 max-h-[400px] overflow-y-auto">
@@ -336,8 +341,8 @@ export default function ClassesPage() {
                 </div>
               </div>
 
-              {/* Thêm học sinh vào lớp — chỉ admin */}
-              {isAdmin && <div className="bg-white rounded-xl border border-gray-100">
+              {/* Thêm học sinh vào lớp — admin + GV lớp mình */}
+              <div className="bg-white rounded-xl border border-gray-100">
                 <div className="px-4 py-3 border-b border-gray-50 space-y-2">
                   <p className="text-sm font-medium text-gray-700">Thêm vào lớp</p>
                   <input
@@ -370,7 +375,7 @@ export default function ClassesPage() {
                     </p>
                   )}
                 </div>
-              </div>}
+              </div>
             </div>
         </div>
       )}
@@ -466,12 +471,22 @@ export default function ClassesPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Học phí (VNĐ)</label>
+                  <CurrencyInput
+                    value={form.tuitionFee}
+                    onChange={v => setForm(f => ({ ...f, tuitionFee: v }))}
+                    placeholder="500.000"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">% chia GV</label>
                   <input
                     type="number"
                     min="0"
-                    value={form.tuitionFee}
-                    onChange={e => setForm(f => ({ ...f, tuitionFee: e.target.value }))}
-                    placeholder="VD: 500000"
+                    max="100"
+                    value={form.teacherSharePercent}
+                    onChange={e => setForm(f => ({ ...f, teacherSharePercent: e.target.value }))}
+                    placeholder="75"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                   />
                 </div>
@@ -513,6 +528,41 @@ export default function ClassesPage() {
           onClose={() => setShowImport(false)}
           onDone={() => selectClass(selected)}
         />
+      )}
+
+      {/* Export điểm danh theo tháng */}
+      {showExportAttendance && selected && (
+        <div className="fixed inset-0 backdrop-blur-sm bg-gradient-to-br from-red-50 via-amber-50 to-white bg-opacity-80 flex items-center justify-center z-50" onClick={() => setShowExportAttendance(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 p-6 w-full max-w-xs animate-fade-in" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-gray-900 mb-4">Export điểm danh</h3>
+            <p className="text-sm text-gray-500 mb-3">{selected.name} - {selected.subject}</p>
+            <div className="flex gap-2 mb-4">
+              <select value={exportMonth} onChange={e => setExportMonth(Number(e.target.value))} className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>Tháng {i + 1}</option>)}
+              </select>
+              <select value={exportYear} onChange={e => setExportYear(Number(e.target.value))} className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                {[2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={async () => {
+                const now = new Date()
+                const isCurrentMonth = exportMonth === now.getMonth() + 1 && exportYear === now.getFullYear()
+                if (isCurrentMonth && now.getDate() < 28) {
+                  if (!window.confirm(`Tháng ${exportMonth}/${exportYear} chưa kết thúc. Vẫn export?`)) return
+                }
+                const r = await classesApi.exportAttendance(selected.id, exportMonth, exportYear)
+                downloadBlob(r, `diem-danh-${selected.name}-T${exportMonth}-${exportYear}.xlsx`)
+                setShowExportAttendance(false)
+              }} className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-sm font-medium transition">Export</button>
+              <button onClick={async () => {
+                const r = await classesApi.exportAttendance(selected.id)
+                downloadBlob(r, `diem-danh-${selected.name}-tat-ca.xlsx`)
+                setShowExportAttendance(false)
+              }} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition">Tất cả</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

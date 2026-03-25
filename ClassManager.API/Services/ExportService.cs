@@ -128,15 +128,15 @@ namespace ClassManager.API.Services
         }
 
         // ── Xuất điểm danh 1 lớp (tất cả buổi) ──────────────────
-        public async Task<byte[]> ExportAttendanceAsync(int classId)
+        public async Task<byte[]> ExportAttendanceAsync(int classId, int? month = null, int? year = null)
         {
             var cls = await _db.Classes.Include(c => c.Teacher).FirstOrDefaultAsync(c => c.Id == classId);
             if (cls == null) return [];
 
-            var sessions = await _db.Sessions
-                .Where(s => s.ClassId == classId)
-                .OrderBy(s => s.SessionDate)
-                .ToListAsync();
+            var sessionsQuery = _db.Sessions.Where(s => s.ClassId == classId);
+            if (month.HasValue && year.HasValue)
+                sessionsQuery = sessionsQuery.Where(s => s.SessionDate.Month == month.Value && s.SessionDate.Year == year.Value);
+            var sessions = await sessionsQuery.OrderBy(s => s.SessionDate).ToListAsync();
 
             var students = await _db.StudentClasses
                 .Where(sc => sc.ClassId == classId && sc.Student.IsActive)
@@ -151,7 +151,8 @@ namespace ClassManager.API.Services
 
             using var wb = new XLWorkbook();
             var ws = wb.AddWorksheet($"Điểm danh {cls.Name}");
-            ws.Cell(1, 1).Value = $"Điểm danh lớp {cls.Name} - {cls.Subject}";
+            var monthLabel = month.HasValue && year.HasValue ? $" - Tháng {month}/{year}" : "";
+            ws.Cell(1, 1).Value = $"Điểm danh lớp {cls.Name} - {cls.Subject}{monthLabel}";
             ws.Cell(1, 1).Style.Font.Bold = true; ws.Cell(1, 1).Style.Font.FontSize = 14;
             ws.Cell(2, 1).Value = $"GV: {cls.Teacher?.FullName ?? "Chưa có"} · {sessions.Count} buổi · {students.Count} HS";
 

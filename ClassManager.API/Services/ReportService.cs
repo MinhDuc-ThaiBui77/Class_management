@@ -111,18 +111,18 @@ namespace ClassManager.API.Services
                 .Select(g => new { Month = g.Key, Total = g.Sum(p => p.Amount) })
                 .ToDictionaryAsync(x => x.Month, x => x.Total);
 
-            // Teacher cost: Lương = Số HS × 35k × 75% per session
-            const decimal RATE = 35000m * 0.75m; // = 26,250 per student per session
+            // Teacher cost: Lương = Số HS × 35k × (SharePercent/100) per session
+            const decimal RATE_PER_STUDENT = 35000m;
             var sessionsByClassMonth = await _db.Sessions
                 .Where(s => s.SessionDate >= yearStart && s.SessionDate <= yearEnd && s.Class.TeacherId != null)
                 .GroupBy(s => new { Month = s.SessionDate.Month, s.ClassId })
                 .Select(g => new { g.Key.Month, g.Key.ClassId, Count = g.Count() })
                 .ToListAsync();
 
-            var classStudentCounts = await _db.Classes
+            var classInfo = await _db.Classes
                 .Where(c => c.TeacherId != null)
-                .Select(c => new { c.Id, StudentCount = c.StudentClasses.Count(sc => sc.Student.IsActive) })
-                .ToDictionaryAsync(c => c.Id, c => c.StudentCount);
+                .Select(c => new { c.Id, c.TeacherSharePercent, StudentCount = c.StudentClasses.Count(sc => sc.Student.IsActive) })
+                .ToDictionaryAsync(c => c.Id, c => new { c.StudentCount, c.TeacherSharePercent });
 
             // Gộp: 1 query expenses
             var allExpenses = await _db.Expenses.ToListAsync();
@@ -138,8 +138,8 @@ namespace ClassManager.API.Services
                 var revenue = revenueByMonth.GetValueOrDefault(m, 0);
 
                 var teacherCost = sessionsByClassMonth
-                    .Where(s => s.Month == m && classStudentCounts.ContainsKey(s.ClassId))
-                    .Sum(s => s.Count * classStudentCounts[s.ClassId] * RATE);
+                    .Where(s => s.Month == m && classInfo.ContainsKey(s.ClassId))
+                    .Sum(s => s.Count * classInfo[s.ClassId].StudentCount * RATE_PER_STUDENT * (classInfo[s.ClassId].TeacherSharePercent / 100m));
 
                 var expenseCost = nonRecurringByMonth.GetValueOrDefault(m, 0) + recurringMonthly;
                 var totalCost = teacherCost + expenseCost;
@@ -229,9 +229,8 @@ namespace ClassManager.API.Services
             var startDate = new DateTime(sy, sm, 1, 0, 0, 0, DateTimeKind.Utc);
             var endDate = new DateTime(ey, em, DateTime.DaysInMonth(ey, em), 23, 59, 59, DateTimeKind.Utc);
 
-            // Công thức: Lương GV/buổi = Số HS × 35,000 × 75%
+            // Công thức: Lương GV/buổi = Số HS × 35,000 × (TeacherSharePercent / 100)
             const decimal RATE_PER_STUDENT = 35000m;
-            const decimal TEACHER_SHARE = 0.75m;
 
             var classData = await _db.Classes
                 .Where(c => c.TeacherId != null)
@@ -241,6 +240,7 @@ namespace ClassManager.API.Services
                     TeacherName = c.Teacher!.FullName,
                     c.Subject,
                     ClassName = c.Name,
+                    SharePercent = c.TeacherSharePercent,
                     StudentCount = c.StudentClasses.Count(sc => sc.Student.IsActive),
                     SessionCount = c.Sessions.Count(s => s.SessionDate >= startDate && s.SessionDate <= endDate)
                 })
@@ -252,8 +252,8 @@ namespace ClassManager.API.Services
                 .Select(g =>
                 {
                     var totalSessions = g.Sum(c => c.SessionCount);
-                    var salaryPerSession = g.Sum(c => c.StudentCount * RATE_PER_STUDENT * TEACHER_SHARE * c.SessionCount) / (totalSessions > 0 ? totalSessions : 1);
-                    var total = g.Sum(c => c.SessionCount * c.StudentCount * RATE_PER_STUDENT * TEACHER_SHARE);
+                    var salaryPerSession = g.Sum(c => c.StudentCount * RATE_PER_STUDENT * (c.SharePercent / 100m) * c.SessionCount) / (totalSessions > 0 ? totalSessions : 1);
+                    var total = g.Sum(c => c.SessionCount * c.StudentCount * RATE_PER_STUDENT * (c.SharePercent / 100m));
                     return new TeacherCostItem(g.Key.TeacherId, g.Key.TeacherName, g.Key.Subject,
                         totalSessions, Math.Round(salaryPerSession), Math.Round(total));
                 })

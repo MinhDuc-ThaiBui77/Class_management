@@ -30,6 +30,33 @@ namespace ClassManager.API.Controllers
             return Ok(await _svc.GetAllSessionsAsync(teacherId));
         }
 
+        [HttpGet("sessions/copy-preview")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> CopyPreview([FromQuery] string week)
+        {
+            if (!DateTime.TryParse(week, out var weekStart))
+                return BadRequest(new { message = "Ngày không hợp lệ." });
+            var result = await _svc.PreviewCopyWeekAsync(weekStart);
+            return Ok(result);
+        }
+
+        [HttpPost("sessions/copy-week")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> CopyFromPreviousWeek([FromQuery] string week, [FromBody] List<int>? sessionIds = null)
+        {
+            if (!DateTime.TryParse(week, out var weekStart))
+                return BadRequest(new { message = "Ngày không hợp lệ." });
+            try
+            {
+                var result = await _svc.CopyFromPreviousWeekAsync(weekStart, sessionIds);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpPost("sessions")]
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> CreateSession(SessionRequest req)

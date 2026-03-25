@@ -79,10 +79,11 @@ namespace ClassManager.API.Controllers
         }
 
         [HttpGet("{id}/export-attendance")]
-        public async Task<IActionResult> ExportAttendance(int id)
+        public async Task<IActionResult> ExportAttendance(int id, [FromQuery] int? month = null, [FromQuery] int? year = null)
         {
-            var bytes = await _exportSvc.ExportAttendanceAsync(id);
-            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"diem-danh-{id}.xlsx");
+            var bytes = await _exportSvc.ExportAttendanceAsync(id, month, year);
+            var suffix = month.HasValue && year.HasValue ? $"-T{month}-{year}" : "";
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"diem-danh-{id}{suffix}.xlsx");
         }
 
         [HttpGet("{id}/students")]
@@ -90,9 +91,9 @@ namespace ClassManager.API.Controllers
             => Ok(await _svc.GetStudentsAsync(id));
 
         [HttpPost("{id}/students")]
-        [Authorize(Roles = "admin")]
         public async Task<IActionResult> Enroll(int id, EnrollRequest req)
         {
+            if (!IsAdmin) { var tid = await CallerTeacherIdAsync(); if (!await _svc.IsTeacherOfClassAsync(id, tid)) return Forbid(); }
             var ok = await _svc.EnrollAsync(id, req.StudentId);
             return ok ? Ok() : Conflict(new { message = "Học sinh đã có trong lớp này." });
         }
@@ -105,11 +106,10 @@ namespace ClassManager.API.Controllers
             return ok ? NoContent() : NotFound();
         }
 
-        // POST /api/classes/{id}/students/import — import + enroll vào lớp
         [HttpPost("{id}/students/import")]
-        [Authorize(Roles = "admin")]
         public async Task<IActionResult> ImportStudents(int id, IFormFile file)
         {
+            if (!IsAdmin) { var tid = await CallerTeacherIdAsync(); if (!await _svc.IsTeacherOfClassAsync(id, tid)) return Forbid(); }
             if (file == null || file.Length == 0)
                 return BadRequest(new { message = "Vui lòng chọn file Excel." });
             if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))

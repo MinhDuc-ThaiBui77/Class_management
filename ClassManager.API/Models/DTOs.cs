@@ -8,9 +8,9 @@ namespace ClassManager.API.Models.DTOs
 
     // ── Class ────────────────────────────────────────────────────────
 
-    public record ClassRequest(string Name, string Subject, int? TeacherId, string Notes = "", int? TotalSessions = null, decimal? TuitionFee = null, DateTime? StartDate = null);
+    public record ClassRequest(string Name, string Subject, int? TeacherId, string Notes = "", int? TotalSessions = null, decimal? TuitionFee = null, int TeacherSharePercent = 75, DateTime? StartDate = null);
 
-    public record ClassResponse(int Id, string Name, string Subject, string Notes, int StudentCount, int? TeacherId, string? TeacherName, int? TotalSessions = null, decimal? TuitionFee = null, int CurrentSessions = 0, DateTime? StartDate = null);
+    public record ClassResponse(int Id, string Name, string Subject, string Notes, int StudentCount, int? TeacherId, string? TeacherName, int? TotalSessions = null, decimal? TuitionFee = null, int TeacherSharePercent = 75, int CurrentSessions = 0, DateTime? StartDate = null);
 
     public record ClassStudentItem(int StudentId, string FullName, string Address, DateTime EnrolledDate);
 
