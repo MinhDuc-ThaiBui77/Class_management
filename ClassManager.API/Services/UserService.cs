@@ -239,6 +239,7 @@ namespace ClassManager.API.Services
             if (!BCrypt.Net.BCrypt.Verify(req.CurrentPassword, user.PasswordHash))
                 return (false, "Mật khẩu hiện tại không đúng.");
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+            user.MustChangePassword = false;
             await _db.SaveChangesAsync();
             return (true, null);
         }
