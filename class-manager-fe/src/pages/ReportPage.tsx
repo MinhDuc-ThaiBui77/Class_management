@@ -141,21 +141,21 @@ export default function ReportPage() {
   return (
     <div className="space-y-6">
       {/* Header + Filters */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Báo cáo tài chính</h2>
           <p className="text-sm text-gray-400">Doanh thu, chi phí và lợi nhuận</p>
         </div>
         <button
           onClick={handleExport}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition self-start"
         >
           Export Excel
         </button>
       </div>
 
       {/* Period filter */}
-      <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-3">
         <div className="flex bg-gray-100 rounded-lg p-0.5">
           {(['month', 'quarter', 'year'] as const).map(p => (
             <button
@@ -292,39 +292,66 @@ export default function ReportPage() {
             </div>
 
             {tab === 'teachers' && (
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
-                  <tr>
-                    <th className="px-4 py-3 text-left">Giáo viên</th>
-                    <th className="px-4 py-3 text-left">Môn</th>
-                    <th className="px-4 py-3 text-right">Số buổi</th>
-                    <th className="px-4 py-3 text-right">Lương/buổi</th>
-                    <th className="px-4 py-3 text-right">Thành tiền</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
+              <>
+                {/* Mobile cards */}
+                <div className="md:hidden divide-y divide-gray-50">
                   {summary.teacherBreakdown.map(t => (
-                    <tr key={t.teacherId} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium text-gray-800">{t.teacherName}</td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">{t.subject}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-600">{t.sessionCount}</td>
-                      <td className="px-4 py-3 text-right text-gray-600">{fmt(t.salaryPerSession)}</td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-800">{fmt(t.total)}</td>
-                    </tr>
+                    <div key={t.teacherId} className="px-4 py-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-gray-800 text-sm">{t.teacherName}</p>
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">{t.subject}</span>
+                        </div>
+                        <p className="font-medium text-gray-800 text-sm">{fmt(t.total)}</p>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">{t.sessionCount} buổi x {fmt(t.salaryPerSession)}</p>
+                    </div>
                   ))}
                   {summary.teacherBreakdown.length === 0 && (
-                    <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">Chưa có dữ liệu</td></tr>
+                    <div className="px-4 py-6 text-center text-gray-400 text-sm">Chưa có dữ liệu</div>
                   )}
                   {summary.teacherBreakdown.length > 0 && (
-                    <tr className="bg-gray-50 font-medium">
-                      <td colSpan={4} className="px-4 py-3 text-right text-gray-600">Tổng cộng</td>
-                      <td className="px-4 py-3 text-right text-gray-800">{fmt(summary.teacherCost)}</td>
-                    </tr>
+                    <div className="px-4 py-3 bg-gray-50 flex justify-between font-medium text-sm">
+                      <span className="text-gray-600">Tổng cộng</span>
+                      <span className="text-gray-800">{fmt(summary.teacherCost)}</span>
+                    </div>
                   )}
-                </tbody>
-              </table>
+                </div>
+                {/* Desktop table */}
+                <table className="hidden md:table w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Giáo viên</th>
+                      <th className="px-4 py-3 text-left">Môn</th>
+                      <th className="px-4 py-3 text-right">Số buổi</th>
+                      <th className="px-4 py-3 text-right">Lương/buổi</th>
+                      <th className="px-4 py-3 text-right">Thành tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {summary.teacherBreakdown.map(t => (
+                      <tr key={t.teacherId} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium text-gray-800">{t.teacherName}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">{t.subject}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-600">{t.sessionCount}</td>
+                        <td className="px-4 py-3 text-right text-gray-600">{fmt(t.salaryPerSession)}</td>
+                        <td className="px-4 py-3 text-right font-medium text-gray-800">{fmt(t.total)}</td>
+                      </tr>
+                    ))}
+                    {summary.teacherBreakdown.length === 0 && (
+                      <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">Chưa có dữ liệu</td></tr>
+                    )}
+                    {summary.teacherBreakdown.length > 0 && (
+                      <tr className="bg-gray-50 font-medium">
+                        <td colSpan={4} className="px-4 py-3 text-right text-gray-600">Tổng cộng</td>
+                        <td className="px-4 py-3 text-right text-gray-800">{fmt(summary.teacherCost)}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </>
             )}
 
             {tab === 'expenses' && (
@@ -337,7 +364,42 @@ export default function ReportPage() {
                     + Thêm chi phí
                   </button>
                 </div>
-                <table className="w-full text-sm">
+                {/* Mobile cards */}
+                <div className="md:hidden divide-y divide-gray-50">
+                  {summary.expenseBreakdown.map(e => (
+                    <div key={e.id} className="px-4 py-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-800 text-sm">{e.title}</p>
+                          <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                            <span>{new Date(e.expenseDate).toLocaleDateString('vi-VN')}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                              e.isRecurring ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {e.isRecurring ? 'Cố định' : 'Phát sinh'}
+                            </span>
+                          </div>
+                          {e.notes && <p className="text-xs text-gray-400 mt-1 truncate">{e.notes}</p>}
+                        </div>
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                          <span className="font-medium text-gray-800 text-sm">{fmt(e.amount)}</span>
+                          <button onClick={() => handleDeleteExpense(e.id)} className="text-red-400 text-xs">Xóa</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {summary.expenseBreakdown.length === 0 && (
+                    <div className="px-4 py-6 text-center text-gray-400 text-sm">Chưa có chi phí</div>
+                  )}
+                  {summary.expenseBreakdown.length > 0 && (
+                    <div className="px-4 py-3 bg-gray-50 flex justify-between font-medium text-sm">
+                      <span className="text-gray-600">Tổng cộng</span>
+                      <span className="text-gray-800">{fmt(summary.expenseCost)}</span>
+                    </div>
+                  )}
+                </div>
+                {/* Desktop table */}
+                <table className="hidden md:table w-full text-sm">
                   <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                     <tr>
                       <th className="px-4 py-3 text-left">Khoản mục</th>
@@ -463,9 +525,9 @@ function Card({ label, value, color }: { label: string; value: string; color: st
     gray: 'bg-gray-50 text-gray-700 border-gray-100',
   }
   return (
-    <div className={`rounded-xl border p-4 ${colors[color] ?? 'bg-white border-gray-100'}`}>
+    <div className={`rounded-xl border p-3 md:p-4 ${colors[color] ?? 'bg-white border-gray-100'}`}>
       <p className="text-xs font-medium opacity-70 uppercase tracking-wide mb-1">{label}</p>
-      <p className="text-xl font-bold">{value}</p>
+      <p className="text-base md:text-xl font-bold">{value}</p>
     </div>
   )
 }

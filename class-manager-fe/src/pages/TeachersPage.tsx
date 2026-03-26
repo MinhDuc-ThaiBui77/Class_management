@@ -86,7 +86,7 @@ export default function TeachersPage() {
                 </div>
               </div>
               {canAdmin && (
-                <div className="mt-4 pt-3 border-t border-gray-50 flex justify-end opacity-0 group-hover:opacity-100 transition">
+                <div className="mt-4 pt-3 border-t border-gray-50 flex justify-end opacity-100 md:opacity-0 md:group-hover:opacity-100 transition">
                   <button onClick={() => setConfirmDelete(t)} className="text-red-400 hover:text-red-600 text-xs font-medium">Xóa giáo viên</button>
                 </div>
               )}

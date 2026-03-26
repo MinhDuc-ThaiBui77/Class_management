@@ -278,16 +278,16 @@ function AttendanceTab() {
   const displayDate = new Date(date + 'T00:00')
 
   return (
-    <div className="flex gap-4">
-      {/* Mini Calendar sidebar */}
-      <div className="flex-shrink-0">
+    <div className="flex flex-col md:flex-row gap-4">
+      {/* Mini Calendar sidebar — hidden on mobile */}
+      <div className="hidden md:block flex-shrink-0">
         <MiniCalendar selectedDate={date} onSelect={setDate} sessionDates={sessionDates} />
       </div>
 
       {/* Main content */}
       <div className="flex-1 space-y-4">
         {/* Date header */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3 flex-wrap">
           <button onClick={() => setDate(toDateStr(addDays(displayDate, -1)))} className="text-gray-400 hover:text-gray-700 text-lg">◀</button>
           <h3 className="text-lg font-semibold text-gray-800">
             {displayDate.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
@@ -362,7 +362,44 @@ function AttendanceTab() {
             <button onClick={() => { setSelectedSession(null); setRecords([]) }} className="text-gray-400 hover:text-gray-600">✕</button>
           </div>
 
-          <table className="w-full text-sm">
+          {/* Mobile attendance cards */}
+          <div className="md:hidden space-y-2">
+            {records.map(r => (
+              <div key={r.studentId} className="border border-gray-100 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium text-gray-800 text-sm">{r.studentName}</span>
+                  {savingId === r.studentId && <span className="text-green-500 text-xs">✓</span>}
+                </div>
+                <div className="flex gap-1.5 mb-2">
+                  {['Present', 'Absent', 'Excused'].map(s => (
+                    <button
+                      key={s}
+                      onClick={() => setStatus(r.studentId, s)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
+                        r.status === s ? statusColor(s) : 'bg-gray-100 text-gray-400'
+                      }`}
+                    >{statusLabel(s)}</button>
+                  ))}
+                </div>
+                {r.status !== 'Present' && (
+                  <input
+                    type="text"
+                    placeholder="Nhập lý do..."
+                    defaultValue={r.reason}
+                    onBlur={e => { if (e.target.value !== r.reason) saveReason(r.studentId, e.target.value) }}
+                    onKeyDown={e => { if (e.key === 'Enter') { const v = (e.target as HTMLInputElement).value; if (v !== r.reason) saveReason(r.studentId, v) } }}
+                    className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                )}
+              </div>
+            ))}
+            {records.length === 0 && (
+              <div className="text-center text-gray-400 py-6 text-sm">Lớp này chưa có học sinh</div>
+            )}
+          </div>
+
+          {/* Desktop attendance table */}
+          <table className="hidden md:table w-full text-sm">
             <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
               <tr>
                 <th className="px-4 py-2 text-left">Học sinh</th>
@@ -497,9 +534,9 @@ function ScheduleTab() {
   const fillRate = totalSlots > 0 ? Math.round((filledSlots / totalSlots) * 100) : 0
 
   return (
-    <div className="flex gap-4">
-      {/* Left: Mini calendar + legend + stats */}
-      <div className="flex-shrink-0 space-y-3 w-64">
+    <div className="flex flex-col lg:flex-row gap-4">
+      {/* Left: Mini calendar + legend + stats — hidden on mobile */}
+      <div className="hidden lg:block flex-shrink-0 space-y-3 w-64">
         <MiniCalendar selectedDate={toDateStr(weekStart)} onSelect={(ds: string) => setWeekStart(getMonday(new Date(ds + 'T00:00')))} sessionDates={sessionDates} mode="week" />
 
         {/* Stats */}

@@ -197,7 +197,7 @@ export default function AccountsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Quản lý tài khoản</h2>
           <p className="text-sm text-gray-400">{accounts.length} tài khoản</p>
@@ -218,8 +218,54 @@ export default function AccountsPage() {
         </div>
       </div>
 
-      {/* Bảng tài khoản */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-3">
+        {loading && <div className="text-center text-gray-400 py-8 text-sm">Đang tải...</div>}
+        {!loading && accounts.map(u => (
+          <div key={u.id} className={`bg-white rounded-xl border border-gray-100 p-4 ${!u.isActive ? 'opacity-50' : ''}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-medium text-gray-800">
+                  {u.fullName}
+                  {u.email === me?.email && <span className="ml-2 text-xs text-gray-400">(bạn)</span>}
+                </p>
+                <p className="text-xs text-gray-400 truncate">{u.email}</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {roleBadge(u.role)}
+                {u.isActive
+                  ? <span className="text-xs text-green-600 font-medium">Hoạt động</span>
+                  : <span className="text-xs text-gray-400">Vô hiệu</span>}
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+              {u.teacherName
+                ? <span className="text-green-600 font-medium">✓ {u.teacherName}</span>
+                : u.role === 'teacher'
+                  ? <span className="text-orange-400">⚠ Chưa link GV</span>
+                  : null}
+              <span>{new Date(u.createdAt).toLocaleDateString('vi-VN')}</span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-3 border-t border-gray-50 pt-3">
+              <button onClick={() => openEdit(u)} className="text-blue-500 text-xs font-medium py-1">Sửa</button>
+              <button onClick={() => openReset(u)} className="text-orange-400 text-xs font-medium py-1">Reset PW</button>
+              {u.email !== me?.email && (<>
+                <button onClick={() => handleToggleActive(u)}
+                  className={`text-xs font-medium py-1 ${u.isActive ? 'text-amber-500' : 'text-green-500'}`}>
+                  {u.isActive ? 'Vô hiệu' : 'Kích hoạt'}
+                </button>
+                <button onClick={() => handleDelete(u)} className="text-red-400 text-xs font-medium py-1">Xóa</button>
+              </>)}
+            </div>
+          </div>
+        ))}
+        {!loading && accounts.length === 0 && (
+          <div className="text-center text-gray-400 py-8 text-sm">Chưa có tài khoản nào</div>
+        )}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block bg-white rounded-xl border border-gray-100 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
             <tr>
@@ -284,8 +330,8 @@ export default function AccountsPage() {
 
       {/* Modal: Tạo tài khoản */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/30 flex items-end md:items-center justify-center z-50">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h3 className="font-semibold text-gray-800 mb-4">Tạo tài khoản mới</h3>
             <form onSubmit={handleCreate} className="space-y-3">
               <div>
@@ -355,8 +401,8 @@ export default function AccountsPage() {
 
       {/* Modal: Sửa tài khoản */}
       {editTarget && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/30 flex items-end md:items-center justify-center z-50">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h3 className="font-semibold text-gray-800 mb-1">Chỉnh sửa tài khoản</h3>
             <p className="text-xs text-gray-400 mb-4">{editTarget.email}</p>
             <form onSubmit={handleEdit} className="space-y-3">
@@ -418,8 +464,8 @@ export default function AccountsPage() {
 
       {/* Modal: Reset mật khẩu */}
       {resetTarget && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+        <div className="fixed inset-0 bg-black/30 flex items-end md:items-center justify-center z-50">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-xl p-6 w-full max-w-sm">
             <h3 className="font-semibold text-gray-800 mb-1">Reset mật khẩu</h3>
             <p className="text-sm text-gray-400 mb-4">{resetTarget.fullName} — {resetTarget.email}</p>
             <form onSubmit={handleReset} className="space-y-3">
@@ -447,8 +493,8 @@ export default function AccountsPage() {
 
       {/* Modal: Đổi mật khẩu bản thân */}
       {showChangePw && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+        <div className="fixed inset-0 bg-black/30 flex items-end md:items-center justify-center z-50">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-xl p-6 w-full max-w-sm">
             <h3 className="font-semibold text-gray-800 mb-4">Đổi mật khẩu của bạn</h3>
             <form onSubmit={handleChangePw} className="space-y-3">
               <div>
