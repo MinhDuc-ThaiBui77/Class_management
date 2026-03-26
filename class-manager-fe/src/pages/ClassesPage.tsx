@@ -199,7 +199,7 @@ export default function ClassesPage() {
   return (
     <div className="space-y-5 animate-fade-in">
       {/* Header — same style as other tabs */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Lớp học</h2>
           <p className="text-sm text-gray-400">{classes.length} lớp · {classes.reduce((s, c) => s + c.studentCount, 0)} học sinh</p>
@@ -252,7 +252,7 @@ export default function ClassesPage() {
                   <span className="text-xs px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full font-medium">{cls.subject}</span>
                 </div>
                 {canManage && (
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                  <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition">
                     <button onClick={e => { e.stopPropagation(); openEdit(cls) }} className="text-gray-400 hover:text-red-600 text-xs font-medium">Sửa</button>
                     <button onClick={e => { e.stopPropagation(); handleDelete(cls) }} className="text-gray-400 hover:text-red-600 text-xs">Xóa</button>
                   </div>
@@ -309,12 +309,12 @@ export default function ClassesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Học sinh trong lớp */}
               <div className="bg-white rounded-xl border border-gray-100">
-                <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+                <div className="px-4 py-3 border-b border-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <p className="text-sm font-medium text-gray-700">Đang học</p>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <button onClick={async () => { const r = await classesApi.exportStudents(selected.id); downloadBlob(r, `lop-${selected.name}.xlsx`) }} className="text-xs text-gray-400 hover:text-gray-600 transition">Export Danh sách</button>
                     <button onClick={() => setShowExportAttendance(true)} className="text-xs text-gray-400 hover:text-gray-600 transition">Export Điểm danh</button>
                     <button onClick={() => setShowImport(true)} className="text-xs text-red-600 hover:text-red-700 transition">Import</button>
@@ -380,8 +380,8 @@ export default function ClassesPage() {
 
       {/* Modal form */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+        <div className="fixed inset-0 bg-black/30 flex items-end md:items-center justify-center z-50">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-xl p-6 w-full max-w-sm max-h-[90vh] overflow-y-auto">
             <h3 className="font-semibold text-gray-800 mb-4">
               {editing ? 'Chỉnh sửa lớp' : 'Thêm lớp mới'}
             </h3>

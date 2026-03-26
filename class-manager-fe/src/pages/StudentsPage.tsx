@@ -130,12 +130,12 @@ export default function StudentsPage() {
   return (
     <div className="animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Học sinh</h2>
           <p className="text-sm text-gray-400">{students.length} học sinh</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button onClick={async () => { const r = await studentsApi.export(); downloadBlob(r, 'danh-sach-hoc-sinh.xlsx') }} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 transition">Export Excel</button>
           {canManage && <button onClick={() => setShowImport(true)} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 transition">Import Excel</button>}
           <button onClick={openAdd} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition">+ Thêm học sinh</button>
@@ -143,7 +143,7 @@ export default function StudentsPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <StatCard label="Tổng học sinh" value={students.length} icon="👨‍🎓" color="teal" />
         <StatCard label="Đang học" value={withClass} icon="📚" color="emerald" subtitle={`${withClass > 0 ? Math.round(withClass / students.length * 100) : 0}%`} />
         <StatCard label="Chưa có lớp" value={noClass} icon="⏳" color={noClass > 0 ? 'amber' : 'gray'} />
@@ -178,7 +178,35 @@ export default function StudentsPage() {
         <EmptyState icon="👨‍🎓" title="Chưa có học sinh nào" description="Thêm học sinh mới hoặc import từ Excel" action={{ label: '+ Thêm học sinh', onClick: openAdd }} />
       ) : (
         <>
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          {/* Mobile card list */}
+          <div className="md:hidden space-y-3">
+            {paged.map((s, idx) => (
+              <div key={s.id} className={`bg-white rounded-xl border p-4 ${selected.has(s.id) ? 'border-red-300 bg-red-50' : 'border-gray-100'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {canManage && <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleOne(s.id)} className="cursor-pointer rounded mt-0.5" />}
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-800 truncate">{s.fullName}</p>
+                      {s.address && <p className="text-xs text-gray-400 truncate">{s.address}</p>}
+                    </div>
+                  </div>
+                  <span className="text-xs text-gray-300 flex-shrink-0">#{(page - 1) * PAGE_SIZE + idx + 1}</span>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+                  <span>{s.classCount === 0 ? <Badge color="gray">Chưa có lớp</Badge> : <span className="text-red-600 font-medium">{s.classCount} lớp</span>}</span>
+                  {s.enrolledDate && <span>{new Date(s.enrolledDate).toLocaleDateString('vi-VN')}</span>}
+                  {s.notes && <span className="text-gray-400 truncate max-w-[150px]">{s.notes}</span>}
+                </div>
+                <div className="mt-3 flex gap-3 border-t border-gray-50 pt-3">
+                  <button onClick={() => openEdit(s)} className="text-red-600 text-xs font-medium py-1">Sửa</button>
+                  {canManage && <button onClick={() => setConfirmDelete(s)} className="text-red-400 text-xs py-1">Xóa</button>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block bg-white rounded-xl border border-gray-100 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                 <tr>
@@ -249,8 +277,8 @@ export default function StudentsPage() {
 
       {/* Form modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-fade-in">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-gray-900 mb-4">{editing ? 'Chỉnh sửa học sinh' : 'Thêm học sinh mới'}</h3>
             <form onSubmit={handleSave} className="space-y-3">
               {[

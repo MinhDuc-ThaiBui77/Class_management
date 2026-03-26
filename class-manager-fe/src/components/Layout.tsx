@@ -400,12 +400,12 @@ export default function Layout() {
           <div className="w-7 h-7 rounded-full bg-red-600 flex items-center justify-center text-white text-[10px] font-bold">{initials}</div>
         </div>
 
-        <main className="flex-1 overflow-auto p-6 animate-fade-in">
+        <main className="flex-1 overflow-auto p-3 md:p-6 animate-fade-in">
           <Outlet />
         </main>
 
         {/* Footer */}
-        <footer className="px-6 py-3 border-t border-gray-100 bg-white flex items-center justify-between text-xs text-gray-400">
+        <footer className="px-3 md:px-6 py-3 border-t border-gray-100 bg-white flex items-center justify-between text-xs text-gray-400">
           <span>&copy; {new Date().getFullYear()} jspinkman &middot; v{APP_VERSION}</span>
           <button onClick={() => setAboutOpen(true)} className="hover:text-red-600 transition">Liên hệ</button>
         </footer>

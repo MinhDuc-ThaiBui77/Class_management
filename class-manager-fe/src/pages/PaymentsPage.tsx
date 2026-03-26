@@ -112,7 +112,7 @@ export default function PaymentsPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Học phí</h2>
           {data && (
@@ -131,7 +131,7 @@ export default function PaymentsPage() {
           const selectedClassId = filterClass ? data?.items.find(i => i.hasClass && `${i.className} ${i.subject}` === filterClass)?.classId : undefined
           const r = await paymentsApi.export(selectedClassId)
           downloadBlob(r, selectedClassId ? `hoc-phi-lop.xlsx` : 'hoc-phi.xlsx')
-        }} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 transition">
+        }} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 transition self-start">
           {filterClass ? `Export "${filterClass}"` : 'Export Excel'}
         </button>
       </div>
@@ -178,8 +178,51 @@ export default function PaymentsPage() {
         <span className="text-xs text-gray-400 ml-auto">{filteredItems.length} kết quả</span>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-3">
+        {filteredItems.map(s => (
+          <div key={itemKey(s)} className={`bg-white rounded-xl border p-4 ${
+            !s.hasClass ? 'border-gray-200 bg-gray-50/50' : s.isPaid ? 'border-green-200 bg-green-50/30' : 'border-red-200 bg-red-50/30'
+          }`}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-medium text-gray-800">{s.studentName}</p>
+                {s.hasClass && (
+                  <span className="inline-block mt-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+                    {s.className} {s.subject}
+                  </span>
+                )}
+              </div>
+              <span className={`px-2 py-1 rounded-full text-xs font-medium flex-shrink-0 ${
+                !s.hasClass ? 'bg-gray-100 text-gray-500'
+                : s.isPaid ? 'bg-green-100 text-green-700'
+                : 'bg-red-100 text-red-600'
+              }`}>
+                {!s.hasClass ? 'Chưa có lớp' : s.isPaid ? 'Đã đóng' : 'Chưa đóng'}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+              <span className="font-medium text-gray-700">
+                {s.isPaid ? `${s.amount.toLocaleString('vi-VN')} ₫` : s.tuitionFee > 0 ? `${s.tuitionFee.toLocaleString('vi-VN')} ₫` : '—'}
+              </span>
+              {s.paidDate && <span>{new Date(s.paidDate).toLocaleDateString('vi-VN')}</span>}
+              {s.teacherName && <span>GV: {s.teacherName}</span>}
+              {s.notes && <span className="text-gray-400 truncate max-w-[150px]">{s.notes}</span>}
+            </div>
+            {!s.isPaid && s.hasClass && (
+              <div className="mt-3 border-t border-gray-100 pt-3">
+                <button onClick={() => openRecord(s)} className="text-red-600 text-xs font-medium py-1">Ghi nhận thanh toán</button>
+              </div>
+            )}
+          </div>
+        ))}
+        {filteredItems.length === 0 && (
+          <div className="text-center text-gray-400 py-8 text-sm">Chưa có dữ liệu (học sinh cần được xếp lớp trước)</div>
+        )}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block bg-white rounded-xl border border-gray-100 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
             <tr>
@@ -290,8 +333,8 @@ export default function PaymentsPage() {
 
       {/* Modal ghi nhận */}
       {showForm && selected && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+        <div className="fixed inset-0 bg-black/30 flex items-end md:items-center justify-center z-50">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-xl p-6 w-full max-w-sm">
             <h3 className="font-semibold text-gray-800 mb-1">Ghi nhận học phí</h3>
             <p className="text-sm text-gray-400 mb-4">
               {selected.studentName} · {selected.className} {selected.subject}

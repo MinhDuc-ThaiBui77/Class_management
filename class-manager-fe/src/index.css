@@ -64,3 +64,12 @@ input:focus, select:focus, textarea:focus {
   outline: none;
   box-shadow: 0 0 0 2px var(--primary-light), 0 0 0 4px var(--primary);
 }
+
+/* ── iOS zoom prevention ───────────────────────────── */
+/* iOS Safari auto-zooms inputs with font-size < 16px.
+   Set 16px on mobile, revert to inherited on md+ (desktop unchanged). */
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
