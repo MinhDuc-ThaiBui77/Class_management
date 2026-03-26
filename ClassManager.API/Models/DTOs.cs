@@ -22,7 +22,7 @@ namespace ClassManager.API.Models.DTOs
 
     public record RegisterRequest(string FullName, string Email, string Password, string Role = "teacher");
 
-    public record AuthResponse(string Token, string FullName, string Email, string Role);
+    public record AuthResponse(string Token, string FullName, string Email, string Role, bool MustChangePassword = false);
 
     // ── Student ──────────────────────────────────────────────────────
 

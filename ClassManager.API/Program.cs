@@ -189,6 +189,15 @@ using (var scope = app.Services.CreateScope())
                 ALTER TABLE "Sessions" ADD COLUMN "DutyTeacher" text NOT NULL DEFAULT '';
             END IF;
 
+            -- Thêm MustChangePassword vào Users (nếu chưa có)
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Users' AND column_name = 'MustChangePassword'
+            ) THEN
+                ALTER TABLE "Users" ADD COLUMN "MustChangePassword" boolean NOT NULL DEFAULT true;
+                UPDATE "Users" SET "MustChangePassword" = false WHERE "Role" = 'owner';
+            END IF;
+
             -- Performance indexes
             CREATE INDEX IF NOT EXISTS "IX_StudentClasses_StudentId" ON "StudentClasses" ("StudentId");
             CREATE INDEX IF NOT EXISTS "IX_StudentClasses_ClassId" ON "StudentClasses" ("ClassId");

@@ -11,8 +11,10 @@ interface User {
 interface AuthContextType {
   user: User | null
   token: string | null
-  login: (token: string, user: User) => void
+  mustChangePassword: boolean
+  login: (token: string, user: User, mustChangePassword?: boolean) => void
   logout: () => void
+  clearMustChangePassword: () => void
   // Role helpers
   isAdmin: boolean      // admin or owner
   isManager: boolean    // manager or above
@@ -43,12 +45,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return u ? JSON.parse(u) : null
   })
 
-  const login = (newToken: string, newUser: User) => {
+  const [mustChangePassword, setMustChangePassword] = useState(false)
+
+  const login = (newToken: string, newUser: User, mustChangePw?: boolean) => {
     localStorage.setItem('token', newToken)
     localStorage.setItem('user', JSON.stringify(newUser))
     flushSync(() => {
       setToken(newToken)
       setUser(newUser)
+      setMustChangePassword(mustChangePw ?? false)
     })
   }
 
@@ -57,14 +62,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('user')
     setToken(null)
     setUser(null)
+    setMustChangePassword(false)
   }
+
+  const clearMustChangePassword = () => setMustChangePassword(false)
 
   const role = user?.role
 
   return (
     <AuthContext.Provider value={{
-      user, token,
-      login, logout,
+      user, token, mustChangePassword,
+      login, logout, clearMustChangePassword,
       isOwner:   role === 'owner',
       isAdmin:   isAtLeast(role, 'admin'),
       isManager: isAtLeast(role, 'manager'),

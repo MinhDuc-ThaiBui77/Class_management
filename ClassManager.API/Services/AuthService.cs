@@ -52,7 +52,7 @@ namespace ClassManager.API.Services
             if (user == null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
                 return (null, "Email hoặc mật khẩu không đúng.", false);
 
-            return (new AuthResponse(GenerateToken(user), user.FullName, user.Email, user.Role), null, false);
+            return (new AuthResponse(GenerateToken(user), user.FullName, user.Email, user.Role, user.MustChangePassword), null, false);
         }
 
         public async Task<AuthResponse?> RegisterAsync(RegisterRequest req)

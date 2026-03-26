@@ -136,6 +136,17 @@ function AboutModal({ open, onClose }: { open: boolean; onClose: () => void }) {
                 <a href="tel:0359350929" className="text-sm text-gray-800 font-semibold hover:text-red-600 transition">035 935 0929</a>
               </div>
             </div>
+
+            <a href="https://www.facebook.com/buiminh077/" target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl hover:bg-blue-100 transition">
+              <div className="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg className="w-4.5 h-4.5 text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] text-gray-400 uppercase tracking-wider font-medium">Facebook</p>
+                <p className="text-sm text-blue-600 font-semibold">jspinkman</p>
+              </div>
+            </a>
           </div>
         </div>
 
@@ -178,7 +189,7 @@ const navItems = [
 ]
 
 export default function Layout() {
-  const { user, logout, canAdmin } = useAuth()
+  const { user, logout, canAdmin, mustChangePassword, clearMustChangePassword } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [hovered, setHovered] = useState(false)
@@ -402,6 +413,35 @@ export default function Layout() {
 
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
       <ChangePasswordModal open={changePwOpen} onClose={() => setChangePwOpen(false)} />
+
+      {/* Popup nhắc đổi mật khẩu */}
+      {mustChangePassword && !changePwOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full animate-fade-in text-center">
+            <div className="px-8 pt-8 pb-4">
+              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+              </div>
+              <h2 className="text-lg font-bold text-gray-800 mb-2">Đổi mật khẩu</h2>
+              <p className="text-sm text-gray-500">Bạn đang sử dụng mật khẩu mặc định. Vui lòng đổi mật khẩu để bảo mật tài khoản.</p>
+            </div>
+            <div className="px-8 pb-8 flex gap-3 pt-2">
+              <button
+                onClick={clearMustChangePassword}
+                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-xl transition"
+              >
+                Để sau
+              </button>
+              <button
+                onClick={() => { clearMustChangePassword(); setChangePwOpen(true) }}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-xl transition"
+              >
+                Đổi ngay
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
