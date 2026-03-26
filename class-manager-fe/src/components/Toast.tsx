@@ -54,16 +54,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={ctx}>
       {children}
-      <div className="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none">
+      <div className="fixed top-6 right-6 z-[100] space-y-3 pointer-events-none">
         {toasts.map(t => (
           <div
             key={t.id}
-            className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg backdrop-blur-sm ${colors[t.type]} ${t.removing ? 'animate-toast-out' : 'animate-toast-in'}`}
+            className={`pointer-events-auto flex items-center gap-4 px-8 py-5 rounded-2xl border-2 shadow-2xl backdrop-blur-sm ${colors[t.type]} ${t.removing ? 'animate-toast-out' : 'animate-toast-in'}`}
           >
-            <span className={`w-5 h-5 rounded-full ${iconBg[t.type]} text-white text-xs flex items-center justify-center font-bold flex-shrink-0`}>
+            <span className={`w-9 h-9 rounded-full ${iconBg[t.type]} text-white text-lg flex items-center justify-center font-bold flex-shrink-0`}>
               {icons[t.type]}
             </span>
-            <span className="text-sm font-medium">{t.message}</span>
+            <span className="text-base font-semibold">{t.message}</span>
           </div>
         ))}
       </div>
