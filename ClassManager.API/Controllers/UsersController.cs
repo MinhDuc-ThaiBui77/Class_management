@@ -72,7 +72,7 @@ namespace ClassManager.API.Controllers
 
         // PUT /api/users/me/password — tất cả role
         [HttpPut("me/password")]
-        [Authorize] // override class-level: mọi role đều được đổi mật khẩu chính mình
+        [Authorize(Roles = "teacher,manager,admin,owner")]
         public async Task<IActionResult> ChangePassword(ChangePasswordRequest req)
         {
             var (ok, error) = await _svc.ChangePasswordAsync(CurrentUserId, req);

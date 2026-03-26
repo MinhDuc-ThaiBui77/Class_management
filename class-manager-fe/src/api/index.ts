@@ -106,7 +106,7 @@ export const usersApi = {
   toggleActive: (id: number) => api.patch(`/users/${id}/toggle`),
   delete: (id: number) => api.delete(`/users/${id}`),
   changePassword: (currentPassword: string, newPassword: string) =>
-    api.put('/users/me/password', { currentPassword, newPassword }),
+    api.put('/auth/change-password', { currentPassword, newPassword }),
 }
 
 // ── Import ────────────────────────────────────────────────────────
