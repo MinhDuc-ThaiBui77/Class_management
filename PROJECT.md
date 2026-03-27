@@ -1,7 +1,7 @@
 # ClassManagerWeb — Tài liệu thiết kế dự án
 
 > Mục đích: Giúp AI nắm nhanh toàn bộ tình trạng dự án để tiếp tục phát triển.
-> Cập nhật lần cuối: 2026-03-25
+> Cập nhật lần cuối: 2026-03-27
 
 ---
 
@@ -10,12 +10,14 @@
 Ứng dụng quản lý trung tâm dạy học tư nhân. Gồm:
 - Quản lý học sinh, giáo viên, lớp học (nhóm theo khối, card grid)
 - Điểm danh theo buổi + lịch dạy calendar (phòng × ca × tuần)
-- Quản lý học phí và lương giáo viên
-- Quản lý tài khoản (admin/teacher)
+- Quản lý học phí: ghi nhận thu, hủy thu (bắt buộc nhập lý do), audit log
+- Quản lý lương giáo viên
+- Quản lý tài khoản (4 vai trò: owner/admin/manager/teacher)
 - Chi phí cố định + phát sinh
 - Báo cáo tài chính (tháng/quý/năm) + biểu đồ + Excel export
 - Export Excel cho tất cả tabs
 - Import học sinh từ Excel
+- PWA: cài được lên màn hình điện thoại
 - Theme: Đỏ #DE2228 + Vàng #F6AB10
 
 ---
@@ -32,6 +34,7 @@
 | **HTTP** | Axios |
 | **Charts** | Recharts |
 | **Excel** | XLSX (FE), ClosedXML (BE) |
+| **PWA** | vite-plugin-pwa + Workbox |
 
 ---
 
@@ -130,9 +133,27 @@ Admin tạo account:
 
 Phân quyền runtime:
   Login → JWT chứa role claim
-  → Backend: [Authorize(Roles = "admin")] trên endpoints
-  → Frontend: isAdmin check → ẩn/hiện UI elements
+  → Backend: [Authorize(Roles = "...")] trên endpoints
+  → Frontend: isAdmin/isManager check → ẩn/hiện UI elements
   → Teacher chỉ thấy: lớp mình dạy, HS mình, sessions mình
+```
+
+### 3.7 Luồng học phí
+```
+Ghi nhận thu:
+  PaymentsPage → Nút "Ghi nhận" (chỉ hiện khi chưa đóng)
+  → Modal nhập số tiền + ghi chú
+  → POST /api/payments → lưu Payment + ghi PaymentLog (action="thu")
+
+Hủy thu:
+  PaymentsPage → Nút "Hủy thu" (chỉ hiện khi đã đóng)
+  → Modal bắt buộc nhập lý do
+  → DELETE /api/payments/{id}?reason=... → xóa Payment + ghi PaymentLog (action="hủy_thu")
+  → Teacher chỉ hủy lớp mình, manager+ hủy tự do
+
+Xem lịch sử (admin+):
+  PaymentsPage → Nút "Xem lịch sử" (vàng)
+  → GET /api/payments/logs → Modal bảng log: thời gian, người thực hiện, hành động, HS, lớp, số tiền, lý do
 ```
 
 ---
@@ -140,7 +161,8 @@ Phân quyền runtime:
 ## 4. Database Schema
 
 ```
-Users: id, fullName, email, passwordHash(BCrypt), role("admin"|"teacher"), isActive, createdAt
+Users: id, fullName, email, passwordHash(BCrypt), role("owner"|"admin"|"manager"|"teacher"),
+  isActive, mustChangePassword, createdAt
 
 Teachers: id, fullName, phone, email, subject, notes, isActive, createdAt, userId(FK→Users, UNIQUE nullable)
 
@@ -164,6 +186,9 @@ Attendances: id, studentId(FK), sessionId(FK), status("Present"|"Absent"|"Excuse
 Payments: id, studentId(FK), classId(FK), amount(12,2), paidDate, notes, createdAt
   UNIQUE: (studentId, classId)
 
+PaymentLogs: id, userId, userName, action("thu"|"hủy_thu"), studentId, studentName,
+  classId, className, amount(12,2), reason, createdAt
+
 Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 ```
 
@@ -178,11 +203,12 @@ Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 ## 5. API Endpoints
 
 ### Auth `/api/auth`
-- POST `/login` | POST `/register`
+- POST `/login` | POST `/register` | PUT `/change-password`
 
-### Users `/api/users` (admin)
+### Users `/api/users` (admin+)
 - GET `/` | POST `/` | PUT `/{id}` | DELETE `/{id}`
 - POST `/{id}/reset-password` | PATCH `/{id}/toggle` | PUT `/me/password`
+- GET `/available-teachers`
 
 ### Teachers `/api/teachers`
 - GET `/` | GET `/{id}` | POST `/` | PUT `/{id}` | DELETE `/{id}`
@@ -202,12 +228,13 @@ Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 - PUT `/sessions/{id}/topic` | GET `/sessions/{id}` | POST `/`
 
 ### Payments `/api/payments`
-- GET `/` | POST `/` | DELETE `/{id}` | GET `/export?classId=`
+- GET `/` | POST `/` | DELETE `/{id}?reason=` | GET `/export?classId=`
+- GET `/logs` (admin+)
 
-### Expenses `/api/expenses` (admin)
+### Expenses `/api/expenses` (admin+)
 - GET `/?month=&year=` | POST `/` | PUT `/{id}` | DELETE `/{id}`
 
-### Reports `/api/reports` (admin)
+### Reports `/api/reports` (admin+)
 - GET `/summary?period=&year=&month=&quarter=`
 - GET `/chart?year=` | GET `/export?...`
 
@@ -223,7 +250,7 @@ Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 | `/teachers` | Card grid, avatar chữ cái, subject badge, export |
 | `/classes` | Tabs khối + card grid (progress bar), panel HS (search + sort), export DS + điểm danh |
 | `/attendance` | Tab Điểm danh (mini calendar + cards ngày) + Tab Lịch dạy (mini calendar + grid tuần compact) |
-| `/payments` | Filter 4 chiều, info popover, export (tất cả hoặc theo lớp) |
+| `/payments` | Filter 4 chiều, ghi nhận/hủy thu, lịch sử log (admin+), export |
 | `/reports` | Báo cáo tổng hợp, biểu đồ, export Excel |
 | `/accounts` | CRUD user, link teacher, reset/đổi PW, toggle active |
 
@@ -240,9 +267,17 @@ Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 - **Modals**: backdrop blur gradient đỏ-vàng, click outside đóng
 
 ### Phân quyền UI
-- Admin: 7 mục sidebar, tất cả CRUD
+- Owner/Admin: 7 mục sidebar, tất cả CRUD + xem log học phí
+- Manager: 7 mục sidebar, CRUD + hủy thu + copy lịch tuần
 - Teacher: 5 mục (ẩn Báo cáo + Tài khoản), chỉ xem lớp mình, sửa nội dung buổi dạy
-- Teacher có thể: thêm/import HS vào lớp mình (backend validate IsTeacherOfClass)
+- Teacher có thể: thêm/import HS vào lớp mình, ghi nhận/hủy thu lớp mình
+
+### PWA
+- `vite-plugin-pwa` với `registerType: autoUpdate`
+- Service Worker cache static assets + NetworkFirst cho API calls
+- Manifest: `display: standalone`, theme `#DE2228`, icons 192+512px
+- iOS: `apple-mobile-web-app-capable` meta tag cho fullscreen mode
+- Cài: Chrome Android → banner tự hiện | Safari iOS → Share → "Thêm vào màn hình chính"
 
 ---
 
@@ -263,6 +298,13 @@ Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 - Auto-save khi click trạng thái (không cần nút Lưu)
 - Ô lý do hiện khi Vắng/Có phép, lưu khi blur/Enter
 - Mini calendar highlight ngày có lớp (mode day cho điểm danh, mode week cho lịch dạy)
+
+### Học phí
+- Mỗi HS chỉ có 1 bản ghi payment/lớp — UNIQUE(studentId, classId)
+- Hủy thu bắt buộc nhập lý do
+- PaymentLogs ghi lại toàn bộ: ai thu/hủy, khi nào, bao nhiêu, lý do
+- GET /payments/logs chỉ admin+ xem được
+- Routing: `[HttpGet("logs")]` phải đặt TRƯỚC `[HttpGet]` để tránh conflict với `DELETE /{id}`
 
 ### Import Excel
 - 3 cột: Họ tên, Địa chỉ, SĐT phụ huynh
@@ -286,6 +328,7 @@ Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 - **Stale-while-revalidate**: Cache data, hiện ngay khi revisit
 - **Local state update**: Enroll/unenroll không reload toàn bộ class list
 - **Cache students**: ClassesPage load all students 1 lần on mount
+- **PWA Workbox**: cache static assets, NetworkFirst cho API (timeout 10s)
 
 ---
 
@@ -303,6 +346,7 @@ npm run dev         # Frontend port 5173 (proxy /api → 5227)
 ### Deploy
 - Frontend: Vercel | Backend: Render (Dockerfile .NET 10)
 - `appsettings.json` KHÔNG commit (trong .gitignore), dùng `appsettings.example.json` làm template
+- `.npmrc` có `legacy-peer-deps=true` để Vercel resolve vite-plugin-pwa với Vite 8
 
 ### Schema Patches (Program.cs, idempotent)
 - Student: Phone→Address
@@ -314,3 +358,5 @@ npm run dev         # Frontend port 5173 (proxy /api → 5227)
 - Class: TeacherSharePercent (default 75)
 - Session: DutyTeacher
 - Performance indexes (7 indexes)
+- Users: MustChangePassword
+- PaymentLogs table
