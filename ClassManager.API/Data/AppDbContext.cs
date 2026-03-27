@@ -16,6 +16,7 @@ namespace ClassManager.API.Data
         public DbSet<Attendance> Attendances => Set<Attendance>();
         public DbSet<Payment> Payments => Set<Payment>();
         public DbSet<Expense> Expenses => Set<Expense>();
+        public DbSet<PaymentLog> PaymentLogs => Set<PaymentLog>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

@@ -1,8 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
 import { paymentsApi, downloadBlob } from '../api'
 import CurrencyInput from '../components/CurrencyInput'
-import ConfirmDialog from '../components/ConfirmDialog'
 import { useAuth } from '../hooks/useAuth'
+
+interface PaymentLogItem {
+  id: number
+  userId: number
+  userName: string
+  action: string
+  studentName: string
+  className: string
+  amount: number
+  reason: string
+  createdAt: string
+}
 
 interface PaymentStatusItem {
   studentId: number
@@ -37,7 +48,14 @@ export default function PaymentsPage() {
   const [amount, setAmount] = useState('')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState<PaymentStatusItem | null>(null)
+  // Hủy thu
+  const [undoTarget, setUndoTarget] = useState<PaymentStatusItem | null>(null)
+  const [undoReason, setUndoReason] = useState('')
+  const [undoError, setUndoError] = useState('')
+  // Lịch sử
+  const [showLogs, setShowLogs] = useState(false)
+  const [logs, setLogs] = useState<PaymentLogItem[]>([])
+  const [logsLoading, setLogsLoading] = useState(false)
   const [infoId, setInfoId] = useState<string | null>(null)
   const [infoAbove, setInfoAbove] = useState(false)
   const infoRef = useRef<HTMLDivElement>(null)
@@ -90,11 +108,28 @@ export default function PaymentsPage() {
     }
   }
 
-  const handleDelete = async () => {
-    if (!confirmDelete?.paymentId) return
-    await paymentsApi.delete(confirmDelete.paymentId)
-    setConfirmDelete(null)
-    loadData()
+  const handleUndo = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!undoTarget?.paymentId) return
+    setUndoError('')
+    try {
+      await paymentsApi.delete(undoTarget.paymentId, undoReason)
+      setUndoTarget(null)
+      setUndoReason('')
+      loadData()
+    } catch {
+      setUndoError('Có lỗi xảy ra. Vui lòng thử lại.')
+    }
+  }
+
+  const loadLogs = async () => {
+    setLogsLoading(true)
+    try {
+      const res = await paymentsApi.getLogs()
+      setLogs(res.data)
+    } finally {
+      setLogsLoading(false)
+    }
   }
 
   const itemKey = (s: PaymentStatusItem) => `${s.studentId}-${s.classId}`
@@ -136,13 +171,21 @@ export default function PaymentsPage() {
             </p>
           )}
         </div>
-        <button onClick={async () => {
-          const selectedClassId = filterClass ? data?.items.find(i => i.hasClass && `${i.className} ${i.subject}` === filterClass)?.classId : undefined
-          const r = await paymentsApi.export(selectedClassId)
-          downloadBlob(r, selectedClassId ? `hoc-phi-lop.xlsx` : 'hoc-phi.xlsx')
-        }} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 transition self-start">
-          {filterClass ? `Export "${filterClass}"` : 'Export Excel'}
-        </button>
+        <div className="flex gap-2 self-start">
+          {canAdmin && (
+            <button onClick={() => { setShowLogs(true); loadLogs() }}
+              className="bg-[#F6AB10] hover:bg-[#e09a0e] text-white px-4 py-2 rounded-xl text-sm font-medium transition">
+              Xem lịch sử
+            </button>
+          )}
+          <button onClick={async () => {
+            const selectedClassId = filterClass ? data?.items.find(i => i.hasClass && `${i.className} ${i.subject}` === filterClass)?.classId : undefined
+            const r = await paymentsApi.export(selectedClassId)
+            downloadBlob(r, selectedClassId ? `hoc-phi-lop.xlsx` : 'hoc-phi.xlsx')
+          }} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition">
+            {filterClass ? `Export "${filterClass}"` : 'Export Excel'}
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -222,7 +265,7 @@ export default function PaymentsPage() {
               <div className="mt-3 border-t border-gray-100 pt-3">
                 {!s.isPaid
                   ? <button onClick={() => openRecord(s)} className="text-red-600 text-xs font-medium py-1">Ghi nhận thanh toán</button>
-                  : <button onClick={() => setConfirmDelete(s)} className="text-gray-400 hover:text-red-500 text-xs font-medium py-1 transition">Hủy thu</button>
+                  : <button onClick={() => { setUndoTarget(s); setUndoReason(''); setUndoError('') }} className="text-gray-400 hover:text-red-500 text-xs font-medium py-1 transition">Hủy thu</button>
                 }
               </div>
             )}
@@ -289,7 +332,7 @@ export default function PaymentsPage() {
                   )}
                   {s.isPaid && s.paymentId && (
                     <button
-                      onClick={() => setConfirmDelete(s)}
+                      onClick={() => { setUndoTarget(s); setUndoReason(''); setUndoError('') }}
                       className="text-gray-400 hover:text-red-500 text-xs font-medium transition"
                     >
                       Hủy thu
@@ -351,16 +394,108 @@ export default function PaymentsPage() {
         </table>
       </div>
 
-      {/* Confirm hủy thu */}
-      {confirmDelete && (
-        <ConfirmDialog
-          title="Hủy thu học phí"
-          message={`Xác nhận hủy khoản thu của ${confirmDelete.studentName} · ${confirmDelete.className} ${confirmDelete.subject}? Thao tác này không thể hoàn tác.`}
-          confirmLabel="Hủy thu"
-          variant="warning"
-          onConfirm={handleDelete}
-          onCancel={() => setConfirmDelete(null)}
-        />
+      {/* Modal hủy thu (có nhập lý do) */}
+      {undoTarget && (
+        <div className="fixed inset-0 bg-black/30 flex items-end md:items-center justify-center z-50">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-xl p-6 w-full max-w-sm">
+            <h3 className="font-semibold text-gray-800 mb-1">Hủy thu học phí</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              {undoTarget.studentName} · {undoTarget.className} {undoTarget.subject}
+              {' · '}
+              <span className="text-gray-600 font-medium">{undoTarget.amount.toLocaleString('vi-VN')} ₫</span>
+            </p>
+            <form onSubmit={handleUndo} className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Lý do hủy thu <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={undoReason}
+                  onChange={e => setUndoReason(e.target.value)}
+                  placeholder="VD: Thu nhầm học sinh, nhầm lớp..."
+                  required
+                  autoFocus
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              {undoError && <p className="text-red-500 text-sm">{undoError}</p>}
+              <div className="flex gap-2 pt-1">
+                <button type="submit"
+                  className="flex-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg py-2 text-sm font-medium transition">
+                  Xác nhận hủy
+                </button>
+                <button type="button"
+                  onClick={() => setUndoTarget(null)}
+                  className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition">
+                  Đóng
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal lịch sử */}
+      {showLogs && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-800">Lịch sử thu / hủy thu học phí</h3>
+              <button onClick={() => setShowLogs(false)} className="text-gray-400 hover:text-gray-600 transition">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {logsLoading ? (
+                <div className="flex items-center justify-center py-12 text-gray-400 text-sm">Đang tải...</div>
+              ) : logs.length === 0 ? (
+                <div className="flex items-center justify-center py-12 text-gray-400 text-sm">Chưa có lịch sử</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-500 text-xs uppercase sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Thời gian</th>
+                      <th className="px-4 py-3 text-left">Người thực hiện</th>
+                      <th className="px-4 py-3 text-left">Hành động</th>
+                      <th className="px-4 py-3 text-left">Học sinh · Lớp</th>
+                      <th className="px-4 py-3 text-right">Số tiền</th>
+                      <th className="px-4 py-3 text-left">Lý do</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {logs.map(log => (
+                      <tr key={log.id} className="hover:bg-gray-50/50">
+                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                          {new Date(log.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-700">{log.userName}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            log.action === 'thu' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {log.action === 'thu' ? 'Thu' : 'Hủy thu'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          <span className="font-medium text-gray-800">{log.studentName}</span>
+                          <span className="text-gray-400"> · </span>
+                          <span>{log.className}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">
+                          {log.amount.toLocaleString('vi-VN')} ₫
+                        </td>
+                        <td className="px-4 py-3 text-gray-400 max-w-[150px] truncate">
+                          {log.reason || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal ghi nhận */}

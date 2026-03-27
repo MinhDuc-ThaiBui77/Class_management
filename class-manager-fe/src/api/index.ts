@@ -130,8 +130,9 @@ export const paymentsApi = {
   getAll: () => api.get('/payments'),
   record: (data: { studentId: number; classId: number; amount: number; notes?: string }) =>
     api.post('/payments', data),
-  delete: (id: number) =>
-    api.delete(`/payments/${id}`),
+  delete: (id: number, reason?: string) =>
+    api.delete(`/payments/${id}`, { params: reason ? { reason } : {} }),
+  getLogs: () => api.get('/payments/logs'),
   export: (classId?: number) =>
     api.get('/payments/export', { params: classId ? { classId } : {}, responseType: 'blob' }),
 }

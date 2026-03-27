@@ -109,6 +109,18 @@ namespace ClassManager.API.Models.DTOs
         string Notes
     );
 
+    public record PaymentLogItem(
+        int Id,
+        int UserId,
+        string UserName,
+        string Action,
+        string StudentName,
+        string ClassName,
+        decimal Amount,
+        string Reason,
+        DateTime CreatedAt
+    );
+
     public record PaymentListResponse(
         List<PaymentStatusItem> Items,
         decimal TotalCollected,
