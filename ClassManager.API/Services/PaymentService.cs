@@ -90,6 +90,14 @@ namespace ClassManager.API.Services
             return await _db.Classes.AnyAsync(c => c.Id == classId && c.TeacherId == teacherId.Value);
         }
 
+        /// <summary>Kiểm tra payment có thuộc lớp của teacher không (dùng cho delete)</summary>
+        public async Task<bool> IsTeacherOfPaymentAsync(int paymentId, int? teacherId)
+        {
+            if (teacherId == null) return false;
+            return await _db.Payments
+                .AnyAsync(p => p.Id == paymentId && p.Class.TeacherId == teacherId.Value);
+        }
+
         public async Task<Payment> RecordPaymentAsync(PaymentRequest req)
         {
             if (req.Amount <= 0)

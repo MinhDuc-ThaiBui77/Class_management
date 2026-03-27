@@ -61,11 +61,16 @@ namespace ClassManager.API.Controllers
             }
         }
 
-        // DELETE — admin+ only
+        // DELETE — teacher xóa lớp mình, manager+ xóa tự do
         [HttpDelete("{id}")]
-        [Authorize(Roles = Roles.AdminUp)]
         public async Task<IActionResult> Delete(int id)
         {
+            if (!IsManagerUp)
+            {
+                var tid = await CallerTeacherIdAsync();
+                if (!await _svc.IsTeacherOfPaymentAsync(id, tid))
+                    return Forbid();
+            }
             var ok = await _svc.DeletePaymentAsync(id);
             return ok ? NoContent() : NotFound();
         }
