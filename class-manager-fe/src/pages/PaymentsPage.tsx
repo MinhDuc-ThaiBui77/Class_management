@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { paymentsApi, downloadBlob } from '../api'
 import CurrencyInput from '../components/CurrencyInput'
+import ConfirmDialog from '../components/ConfirmDialog'
 import { useAuth } from '../hooks/useAuth'
 
 interface PaymentStatusItem {
@@ -36,6 +37,7 @@ export default function PaymentsPage() {
   const [amount, setAmount] = useState('')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<PaymentStatusItem | null>(null)
   const [infoId, setInfoId] = useState<string | null>(null)
   const [infoAbove, setInfoAbove] = useState(false)
   const infoRef = useRef<HTMLDivElement>(null)
@@ -86,6 +88,13 @@ export default function PaymentsPage() {
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Có lỗi xảy ra.')
     }
+  }
+
+  const handleDelete = async () => {
+    if (!confirmDelete?.paymentId) return
+    await paymentsApi.delete(confirmDelete.paymentId)
+    setConfirmDelete(null)
+    loadData()
   }
 
   const itemKey = (s: PaymentStatusItem) => `${s.studentId}-${s.classId}`
@@ -209,9 +218,12 @@ export default function PaymentsPage() {
               {s.teacherName && <span>GV: {s.teacherName}</span>}
               {s.notes && <span className="text-gray-400 truncate max-w-[150px]">{s.notes}</span>}
             </div>
-            {!s.isPaid && s.hasClass && (
+            {s.hasClass && (
               <div className="mt-3 border-t border-gray-100 pt-3">
-                <button onClick={() => openRecord(s)} className="text-red-600 text-xs font-medium py-1">Ghi nhận thanh toán</button>
+                {!s.isPaid
+                  ? <button onClick={() => openRecord(s)} className="text-red-600 text-xs font-medium py-1">Ghi nhận thanh toán</button>
+                  : <button onClick={() => setConfirmDelete(s)} className="text-gray-400 hover:text-red-500 text-xs font-medium py-1 transition">Hủy thu</button>
+                }
               </div>
             )}
           </div>
@@ -275,6 +287,14 @@ export default function PaymentsPage() {
                       Ghi nhận
                     </button>
                   )}
+                  {s.isPaid && s.paymentId && (
+                    <button
+                      onClick={() => setConfirmDelete(s)}
+                      className="text-gray-400 hover:text-red-500 text-xs font-medium transition"
+                    >
+                      Hủy thu
+                    </button>
+                  )}
                   {/* Info icon */}
                   <div className="relative" ref={infoId === itemKey(s) ? infoRef : undefined}>
                     <button
@@ -330,6 +350,18 @@ export default function PaymentsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Confirm hủy thu */}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Hủy thu học phí"
+          message={`Xác nhận hủy khoản thu của ${confirmDelete.studentName} · ${confirmDelete.className} ${confirmDelete.subject}? Thao tác này không thể hoàn tác.`}
+          confirmLabel="Hủy thu"
+          variant="warning"
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
 
       {/* Modal ghi nhận */}
       {showForm && selected && (
