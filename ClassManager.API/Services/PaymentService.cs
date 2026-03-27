@@ -98,7 +98,7 @@ namespace ClassManager.API.Services
                 .AnyAsync(p => p.Id == paymentId && p.Class.TeacherId == teacherId.Value);
         }
 
-        public async Task<Payment> RecordPaymentAsync(PaymentRequest req)
+        public async Task<Payment> RecordPaymentAsync(PaymentRequest req, int userId, string userName)
         {
             if (req.Amount <= 0)
                 throw new InvalidOperationException("Số tiền phải lớn hơn 0.");
@@ -113,6 +113,15 @@ namespace ClassManager.API.Services
             if (exists)
                 throw new InvalidOperationException("Học sinh đã đóng học phí cho lớp này.");
 
+            var studentName = await _db.Students
+                .Where(s => s.Id == req.StudentId)
+                .Select(s => s.FullName)
+                .FirstOrDefaultAsync() ?? "";
+            var classLabel = await _db.Classes
+                .Where(c => c.Id == req.ClassId)
+                .Select(c => c.Name + " " + c.Subject)
+                .FirstOrDefaultAsync() ?? "";
+
             var payment = new Payment
             {
                 StudentId = req.StudentId,
@@ -122,17 +131,57 @@ namespace ClassManager.API.Services
                 Notes     = req.Notes,
             };
             _db.Payments.Add(payment);
+            _db.PaymentLogs.Add(new PaymentLog
+            {
+                UserId      = userId,
+                UserName    = userName,
+                Action      = "thu",
+                StudentId   = req.StudentId,
+                StudentName = studentName,
+                ClassId     = req.ClassId,
+                ClassName   = classLabel,
+                Amount      = req.Amount,
+                Reason      = "",
+            });
+
             await _db.SaveChangesAsync();
             return payment;
         }
 
-        public async Task<bool> DeletePaymentAsync(int id)
+        public async Task<bool> DeletePaymentAsync(int id, int userId, string userName, string reason = "")
         {
-            var payment = await _db.Payments.FindAsync(id);
+            var payment = await _db.Payments
+                .Include(p => p.Student)
+                .Include(p => p.Class)
+                .FirstOrDefaultAsync(p => p.Id == id);
             if (payment == null) return false;
+
+            _db.PaymentLogs.Add(new PaymentLog
+            {
+                UserId      = userId,
+                UserName    = userName,
+                Action      = "hủy_thu",
+                StudentId   = payment.StudentId,
+                StudentName = payment.Student.FullName,
+                ClassId     = payment.ClassId,
+                ClassName   = $"{payment.Class.Name} {payment.Class.Subject}",
+                Amount      = payment.Amount,
+                Reason      = reason,
+            });
+
             _db.Payments.Remove(payment);
             await _db.SaveChangesAsync();
             return true;
+        }
+
+        public async Task<List<PaymentLogItem>> GetLogsAsync()
+        {
+            return await _db.PaymentLogs
+                .OrderByDescending(l => l.CreatedAt)
+                .Select(l => new PaymentLogItem(
+                    l.Id, l.UserId, l.UserName, l.Action,
+                    l.StudentName, l.ClassName, l.Amount, l.Reason, l.CreatedAt))
+                .ToListAsync();
         }
     }
 }

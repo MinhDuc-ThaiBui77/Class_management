@@ -198,6 +198,26 @@ using (var scope = app.Services.CreateScope())
                 UPDATE "Users" SET "MustChangePassword" = false WHERE "Role" = 'owner';
             END IF;
 
+            -- Tạo bảng PaymentLogs (nếu chưa có)
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'PaymentLogs'
+            ) THEN
+                CREATE TABLE "PaymentLogs" (
+                    "Id" SERIAL PRIMARY KEY,
+                    "UserId" INTEGER NOT NULL DEFAULT 0,
+                    "UserName" TEXT NOT NULL DEFAULT '',
+                    "Action" TEXT NOT NULL DEFAULT '',
+                    "StudentId" INTEGER NOT NULL DEFAULT 0,
+                    "StudentName" TEXT NOT NULL DEFAULT '',
+                    "ClassId" INTEGER NOT NULL DEFAULT 0,
+                    "ClassName" TEXT NOT NULL DEFAULT '',
+                    "Amount" NUMERIC(12,2) NOT NULL DEFAULT 0,
+                    "Reason" TEXT NOT NULL DEFAULT '',
+                    "CreatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+            END IF;
+
             -- Performance indexes
             CREATE INDEX IF NOT EXISTS "IX_StudentClasses_StudentId" ON "StudentClasses" ("StudentId");
             CREATE INDEX IF NOT EXISTS "IX_StudentClasses_ClassId" ON "StudentClasses" ("ClassId");

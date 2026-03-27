@@ -19,6 +19,7 @@ namespace ClassManager.API.Controllers
 
         private int    CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         private string CallerRole    => User.FindFirstValue(ClaimTypes.Role)!;
+        private string CallerName    => User.FindFirstValue(ClaimTypes.Name) ?? User.FindFirstValue(ClaimTypes.Email) ?? "";
         private bool   IsManagerUp   => Roles.IsAtLeast(CallerRole, Roles.Manager);
 
         private async Task<int?> CallerTeacherIdAsync() =>
@@ -30,6 +31,14 @@ namespace ClassManager.API.Controllers
             var bytes = await _exportSvc.ExportPaymentsAsync(classId);
             var name = classId.HasValue ? $"hoc-phi-lop-{classId}.xlsx" : "hoc-phi.xlsx";
             return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
+        }
+
+        // GET logs — admin+ only (phải đặt TRƯỚC [HttpGet] để tránh routing conflict với {id})
+        [HttpGet("logs")]
+        [Authorize(Roles = Roles.AdminUp)]
+        public async Task<IActionResult> GetLogs()
+        {
+            return Ok(await _svc.GetLogsAsync());
         }
 
         // GET — teacher thấy lớp mình, manager+ thấy tất cả
@@ -52,7 +61,7 @@ namespace ClassManager.API.Controllers
             }
             try
             {
-                var p = await _svc.RecordPaymentAsync(req);
+                var p = await _svc.RecordPaymentAsync(req, CurrentUserId, CallerName);
                 return Ok(p);
             }
             catch (InvalidOperationException ex)
@@ -63,7 +72,7 @@ namespace ClassManager.API.Controllers
 
         // DELETE — teacher xóa lớp mình, manager+ xóa tự do
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(int id)
+        public async Task<IActionResult> Delete(int id, [FromQuery] string reason = "")
         {
             if (!IsManagerUp)
             {
@@ -71,8 +80,9 @@ namespace ClassManager.API.Controllers
                 if (!await _svc.IsTeacherOfPaymentAsync(id, tid))
                     return Forbid();
             }
-            var ok = await _svc.DeletePaymentAsync(id);
+            var ok = await _svc.DeletePaymentAsync(id, CurrentUserId, CallerName, reason);
             return ok ? NoContent() : NotFound();
         }
+
     }
 }
