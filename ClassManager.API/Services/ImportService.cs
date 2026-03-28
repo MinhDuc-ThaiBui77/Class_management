@@ -3,6 +3,8 @@ using ClassManager.API.Data;
 using ClassManager.API.Models;
 using ClassManager.API.Models.DTOs;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace ClassManager.API.Services
 {
@@ -11,14 +13,24 @@ namespace ClassManager.API.Services
         private readonly AppDbContext _db;
         public ImportService(AppDbContext db) => _db = db;
 
+        // ── Danh sách cột nhận diện + alias ─────────────────────────────
+        private static readonly Dictionary<string, string[]> ColumnAliases = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["FullName"]     = ["Họ tên", "Họ tên *", "Họ và tên", "Tên học sinh", "Tên HS", "FullName"],
+            ["Address"]      = ["Địa chỉ", "Địa chỉ", "Address"],
+            ["ParentPhone"]  = ["SĐT phụ huynh", "SĐT PH", "SĐT", "Số điện thoại", "Phone", "SDT"],
+            ["DateOfBirth"]  = ["Ngày sinh", "Sinh nhày", "Date of Birth", "DOB"],
+            ["EnrolledDate"] = ["Ngày nhập học", "Ngày đăng ký", "Ngày đăng kí", "Enrolled Date"],
+            ["Notes"]        = ["Ghi chú", "Notes", "Ghi chu"],
+        };
+
         // ── Tạo file Excel mẫu ────────────────────────────────────────
         public byte[] GenerateTemplate()
         {
             using var wb = new XLWorkbook();
             var ws = wb.AddWorksheet("Học sinh");
 
-            // Header
-            var headers = new[] { "Họ tên *", "Địa chỉ", "SĐT phụ huynh" };
+            var headers = new[] { "Họ tên *", "Địa chỉ", "SĐT phụ huynh", "Ngày sinh", "Ngày nhập học", "Ghi chú" };
             for (int i = 0; i < headers.Length; i++)
             {
                 ws.Cell(1, i + 1).Value = headers[i];
@@ -30,6 +42,9 @@ namespace ClassManager.API.Services
             ws.Cell(2, 1).Value = "Nguyễn Văn A";
             ws.Cell(2, 2).Value = "123 Lê Lợi, Q1, TP.HCM";
             ws.Cell(2, 3).Value = "0987654321";
+            ws.Cell(2, 4).Value = "15/06/2010";
+            ws.Cell(2, 5).Value = "01/09/2024";
+            ws.Cell(2, 6).Value = "";
 
             ws.Columns().AdjustToContents();
 
@@ -44,29 +59,50 @@ namespace ClassManager.API.Services
             var rows = ParseRows(fileStream);
             int created = 0, skipped = 0;
             var errors  = new List<ImportRowError>();
-            var studentIds = new List<int>(); // Tất cả HS (mới tạo + đã tồn tại)
+            var warnings = new List<ImportRowError>();
+            var studentIds = new List<int>();
 
-            // Load existing students để dedup + tìm ID
             var existingStudents = await _db.Students
                 .Where(s => s.IsActive)
                 .Select(s => new { s.Id, Key = s.FullName.ToLower() + "|" + s.ParentPhone })
                 .ToDictionaryAsync(s => s.Key, s => s.Id);
 
-            foreach (var (row, idx) in rows.Select((r, i) => (r, i + 2)))
+            foreach (var (row, idx) in rows.Select((r, i) => (r, i)))
             {
                 if (string.IsNullOrWhiteSpace(row.FullName))
                 {
-                    errors.Add(new ImportRowError(idx, "Họ tên không được để trống."));
+                    errors.Add(new ImportRowError(row.SourceRow, "Họ tên không được để trống."));
                     continue;
                 }
 
-                // Normalize SĐT
-                var rawPhone = row.ParentPhone?.Trim() ?? "";
-                var phoneDigits = new string(rawPhone.Where(char.IsDigit).ToArray());
-                if (phoneDigits.Length == 9 && phoneDigits[0] != '0')
-                    phoneDigits = "0" + phoneDigits;
-                var normalizedPhone = phoneDigits.Length == 10 && phoneDigits[0] == '0' ? phoneDigits : rawPhone;
+                // Validate & clean phone
+                var phoneResult = CleanPhone(row.ParentPhone);
+                var notesParts = new List<string>();
+                if (!string.IsNullOrEmpty(row.Notes))
+                    notesParts.Add(row.Notes);
 
+                if (phoneResult.InvalidValue != null)
+                {
+                    notesParts.Add($"SĐT gốc: {phoneResult.InvalidValue}");
+                    warnings.Add(new ImportRowError(row.SourceRow, $"SĐT không hợp lệ \"{phoneResult.InvalidValue}\" → chuyển sang ghi chú"));
+                }
+
+                // Validate & clean dates
+                var dob = CleanDate(row.DateOfBirth);
+                if (dob.InvalidValue != null)
+                {
+                    notesParts.Add($"Ngày sinh gốc: {dob.InvalidValue}");
+                    warnings.Add(new ImportRowError(row.SourceRow, $"Ngày sinh không hợp lệ \"{dob.InvalidValue}\" → chuyển sang ghi chú"));
+                }
+
+                var enrolledDate = CleanDate(row.EnrolledDate);
+                if (enrolledDate.InvalidValue != null)
+                {
+                    notesParts.Add($"Ngày nhập học gốc: {enrolledDate.InvalidValue}");
+                    warnings.Add(new ImportRowError(row.SourceRow, $"Ngày nhập học không hợp lệ \"{enrolledDate.InvalidValue}\" → chuyển sang ghi chú"));
+                }
+
+                var normalizedPhone = phoneResult.CleanValue ?? "";
                 var key = row.FullName.Trim().ToLower() + "|" + normalizedPhone;
 
                 if (existingStudents.TryGetValue(key, out var existingId))
@@ -81,7 +117,9 @@ namespace ClassManager.API.Services
                     FullName     = row.FullName.Trim(),
                     Address      = row.Address?.Trim() ?? "",
                     ParentPhone  = normalizedPhone,
-                    EnrolledDate = DateTime.UtcNow,
+                    DateOfBirth  = dob.CleanDate,
+                    EnrolledDate = enrolledDate.CleanDate ?? DateTime.UtcNow,
+                    Notes        = string.Join(" | ", notesParts),
                 };
 
                 _db.Students.Add(student);
@@ -91,7 +129,7 @@ namespace ClassManager.API.Services
                 created++;
             }
 
-            return (new ImportResult(created, skipped, errors), studentIds);
+            return (new ImportResult(created, skipped, errors, warnings), studentIds);
         }
 
         // ── Import + enroll vào lớp ───────────────────────────────────
@@ -103,7 +141,6 @@ namespace ClassManager.API.Services
 
             var (result, studentIds) = await ImportStudentsAsync(fileStream);
 
-            // Enroll TẤT CẢ HS (mới + đã tồn tại) vào lớp nếu chưa enroll
             var alreadyEnrolled = await _db.StudentClasses
                 .Where(sc => sc.ClassId == classId)
                 .Select(sc => sc.StudentId)
@@ -127,31 +164,149 @@ namespace ClassManager.API.Services
             return result;
         }
 
-        // ── Parse Excel rows ──────────────────────────────────────────
-        private static List<(string? FullName, string? Address, string? ParentPhone)>
-            ParseRows(Stream stream)
+        // ── Auto-detect header & parse rows ─────────────────────────────
+        private static List<ParsedStudentRow> ParseRows(Stream stream)
         {
-            var result = new List<(string?, string?, string?)>();
+            var result = new List<ParsedStudentRow>();
             using var wb = new XLWorkbook(stream);
             var ws = wb.Worksheet(1);
             var lastRow = ws.LastRowUsed()?.RowNumber() ?? 1;
+            var lastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 1;
 
-            for (int r = 2; r <= lastRow; r++)
+            // Bước 1: Quét tìm cell "Họ tên" → xác định headerRow + headerCol
+            int headerRow = -1;
+            int headerCol = -1;
+            var fullNameAliases = ColumnAliases["FullName"];
+
+            for (int r = 1; r <= Math.Min(lastRow, 20); r++) // chỉ quét 20 dòng đầu
             {
-                var fullName    = ws.Cell(r, 1).GetString().Trim();
-                var address     = ws.Cell(r, 2).GetString().Trim();
-                var parentPhone = ws.Cell(r, 3).GetString().Trim();
-
-                if (string.IsNullOrEmpty(fullName) && string.IsNullOrEmpty(address))
-                    continue; // bỏ qua hàng trống
-
-                result.Add((
-                    string.IsNullOrEmpty(fullName) ? null : fullName,
-                    string.IsNullOrEmpty(address) ? null : address,
-                    string.IsNullOrEmpty(parentPhone) ? null : parentPhone
-                ));
+                for (int c = 1; c <= lastCol; c++)
+                {
+                    var cellValue = ws.Cell(r, c).GetString().Trim();
+                    if (fullNameAliases.Any(alias => cellValue.Equals(alias, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        headerRow = r;
+                        headerCol = c;
+                        break;
+                    }
+                }
+                if (headerRow > 0) break;
             }
+
+            // Không tìm thấy header → fallback: row 1 là header, col 1 bắt đầu (tương thích cũ)
+            if (headerRow < 0)
+            {
+                headerRow = 1;
+                headerCol = 1;
+            }
+
+            // Bước 2: Đọc header row → map tên cột → field
+            var columnMapping = new Dictionary<string, int>(); // field → column number
+            for (int c = headerCol; c <= lastCol; c++)
+            {
+                var headerValue = ws.Cell(headerRow, c).GetString().Trim();
+                if (string.IsNullOrEmpty(headerValue)) continue;
+
+                foreach (var (field, aliases) in ColumnAliases)
+                {
+                    if (columnMapping.ContainsKey(field)) continue; // đã map rồi
+                    if (aliases.Any(alias => headerValue.Equals(alias, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        columnMapping[field] = c;
+                        break;
+                    }
+                }
+            }
+
+            // Bước 3: Đọc data rows — bỏ row nào cột FullName trống
+            for (int r = headerRow + 1; r <= lastRow; r++)
+            {
+                var fullName = GetCellString(ws, r, columnMapping.GetValueOrDefault("FullName", -1));
+                if (string.IsNullOrWhiteSpace(fullName)) continue;
+
+                result.Add(new ParsedStudentRow
+                {
+                    SourceRow    = r,
+                    FullName     = fullName,
+                    Address      = GetCellString(ws, r, columnMapping.GetValueOrDefault("Address", -1)),
+                    ParentPhone  = GetCellString(ws, r, columnMapping.GetValueOrDefault("ParentPhone", -1)),
+                    DateOfBirth  = GetCellString(ws, r, columnMapping.GetValueOrDefault("DateOfBirth", -1)),
+                    EnrolledDate = GetCellString(ws, r, columnMapping.GetValueOrDefault("EnrolledDate", -1)),
+                    Notes        = GetCellString(ws, r, columnMapping.GetValueOrDefault("Notes", -1)),
+                });
+            }
+
             return result;
+        }
+
+        private static string? GetCellString(IXLWorksheet ws, int row, int col)
+        {
+            if (col < 0) return null;
+            var val = ws.Cell(row, col).GetString().Trim();
+            return string.IsNullOrEmpty(val) ? null : val;
+        }
+
+        // ── Phone cleaning ──────────────────────────────────────────────
+        private static (string? CleanValue, string? InvalidValue) CleanPhone(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return (null, null);
+
+            // Xóa dấu chấm, dấu cách, dấu gạch ngang
+            var cleaned = Regex.Replace(raw.Trim(), @"[\s.\-()]", "");
+
+            // Chỉ giữ ký tự số
+            var digits = new string(cleaned.Where(char.IsDigit).ToArray());
+
+            // Nếu sau khi clean không phải toàn số → invalid
+            if (digits.Length != cleaned.Length || digits.Length < 9 || digits.Length > 11)
+            {
+                // Kiểm tra xem có chứa số nào không — nếu không có số nào thì chắc chắn không phải SĐT
+                if (digits.Length == 0 || digits.Length < 9)
+                    return (null, raw.Trim());
+            }
+
+            // 9 số → thêm 0
+            if (digits.Length == 9 && digits[0] != '0')
+                digits = "0" + digits;
+
+            // Validate: 10 số, bắt đầu bằng 0
+            if (digits.Length == 10 && digits[0] == '0')
+                return (digits, null);
+
+            return (null, raw.Trim());
+        }
+
+        // ── Date cleaning ───────────────────────────────────────────────
+        private static readonly string[] DateFormats = [
+            "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy",
+            "dd/MM/yy", "d/M/yy", "yyyy-MM-dd", "MM/dd/yyyy",
+        ];
+
+        private static (DateTime? CleanDate, string? InvalidValue) CleanDate(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return (null, null);
+
+            var trimmed = raw.Trim();
+
+            if (DateTime.TryParseExact(trimmed, DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+                return (DateTime.SpecifyKind(dt, DateTimeKind.Utc), null);
+
+            if (DateTime.TryParse(trimmed, CultureInfo.GetCultureInfo("vi-VN"), DateTimeStyles.None, out dt))
+                return (DateTime.SpecifyKind(dt, DateTimeKind.Utc), null);
+
+            return (null, trimmed);
+        }
+
+        // ── Parsed row model ────────────────────────────────────────────
+        private class ParsedStudentRow
+        {
+            public int SourceRow { get; set; }
+            public string? FullName { get; set; }
+            public string? Address { get; set; }
+            public string? ParentPhone { get; set; }
+            public string? DateOfBirth { get; set; }
+            public string? EnrolledDate { get; set; }
+            public string? Notes { get; set; }
         }
     }
 }

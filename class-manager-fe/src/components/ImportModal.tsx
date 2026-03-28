@@ -2,17 +2,46 @@ import { useState, useRef, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { importApi, classesApi } from '../api'
 
+// ── Cột nhận diện (alias) ────────────────────────────────────────
+const KNOWN_COLUMNS: Record<string, { aliases: string[]; label: string; required?: boolean }> = {
+  fullName:     { aliases: ['họ tên', 'họ tên *', 'họ và tên', 'tên học sinh', 'tên hs', 'fullname'], label: 'Họ tên', required: true },
+  address:      { aliases: ['địa chỉ', 'address'], label: 'Địa chỉ' },
+  parentPhone:  { aliases: ['sđt phụ huynh', 'sđt ph', 'sđt', 'số điện thoại', 'phone', 'sdt'], label: 'SĐT phụ huynh' },
+  dateOfBirth:  { aliases: ['ngày sinh', 'sinh nhày', 'date of birth', 'dob'], label: 'Ngày sinh' },
+  enrolledDate: { aliases: ['ngày nhập học', 'ngày đăng ký', 'ngày đăng kí', 'enrolled date'], label: 'Ngày nhập học' },
+  notes:        { aliases: ['ghi chú', 'notes', 'ghi chu'], label: 'Ghi chú' },
+}
+
+function matchColumn(header: string): string | null {
+  const normalized = header.trim().toLowerCase()
+  for (const [field, def] of Object.entries(KNOWN_COLUMNS)) {
+    if (def.aliases.some(a => a === normalized)) return field
+  }
+  return null
+}
+
+interface ColumnMap {
+  index: number
+  header: string
+  field: string | null // null = ignored
+}
+
 interface PreviewRow {
+  sourceRow: number
   fullName: string
   address: string
   parentPhone: string
-  error?: string
+  dateOfBirth: string
+  enrolledDate: string
+  notes: string
+  warnings: string[]
 }
 
 interface ImportResult {
   created: number
   skipped: number
   errors: { row: number; message: string }[]
+  warnings?: { row: number; message: string }[]
 }
 
 interface ClassOption {
@@ -30,10 +59,37 @@ interface Props {
   onDone: () => void
 }
 
+// ── Phone validation (FE preview) ────────────────────────────────
+function validatePhone(raw: string): { clean: string | null; invalid: string | null } {
+  if (!raw) return { clean: null, invalid: null }
+  const cleaned = raw.replace(/[\s.\-()]/g, '')
+  let digits = cleaned.replace(/\D/g, '')
+  if (digits.length !== cleaned.length || digits.length < 9) {
+    return { clean: null, invalid: raw }
+  }
+  if (digits.length === 9 && digits[0] !== '0') digits = '0' + digits
+  if (digits.length === 10 && digits[0] === '0') return { clean: digits, invalid: null }
+  return { clean: null, invalid: raw }
+}
+
+// ── Date validation (FE preview) ─────────────────────────────────
+function validateDate(raw: string): boolean {
+  if (!raw) return true
+  // Try common formats
+  const patterns = [
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/,
+    /^\d{1,2}-\d{1,2}-\d{2,4}$/,
+    /^\d{4}-\d{1,2}-\d{1,2}$/,
+  ]
+  if (!patterns.some(p => p.test(raw.trim()))) return false
+  return !isNaN(Date.parse(raw.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')))
+}
+
 export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [file, setFile]           = useState<File | null>(null)
   const [preview, setPreview]     = useState<PreviewRow[]>([])
+  const [columnMaps, setColumnMaps] = useState<ColumnMap[]>([])
   const [result, setResult]       = useState<ImportResult | null>(null)
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState('')
@@ -52,9 +108,9 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
     }
   }, [mode])
 
-  // Xác định classId thực sự dùng để import
   const resolvedClassId = mode === 'class' ? classId : (selectedClassId || undefined)
 
+  // ── Auto-detect header & parse ──────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
@@ -71,14 +127,91 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
       const data = new Uint8Array(ev.target!.result as ArrayBuffer)
       const wb   = XLSX.read(data, { type: 'array' })
       const ws   = wb.Sheets[wb.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1 }) as string[][]
+      const allRows = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
 
-      const parsed: PreviewRow[] = rows.slice(1).filter(r => r.some(c => c)).map(r => ({
-        fullName:    r[0]?.toString().trim() ?? '',
-        address:     r[1]?.toString().trim() ?? '',
-        parentPhone: r[2]?.toString().trim() ?? '',
-        error:       !r[0]?.toString().trim() ? 'Thiếu họ tên' : undefined,
-      }))
+      // Bước 1: Tìm header row — row đầu tiên chứa cell match "Họ tên"
+      let headerRowIdx = -1
+      let headerColStart = -1
+      const fullNameAliases = KNOWN_COLUMNS.fullName.aliases
+
+      for (let r = 0; r < Math.min(allRows.length, 20); r++) {
+        const row = allRows[r]
+        if (!row) continue
+        for (let c = 0; c < row.length; c++) {
+          const val = String(row[c] ?? '').trim().toLowerCase()
+          if (fullNameAliases.includes(val)) {
+            headerRowIdx = r
+            headerColStart = c
+            break
+          }
+        }
+        if (headerRowIdx >= 0) break
+      }
+
+      if (headerRowIdx < 0) {
+        setError('Không tìm thấy cột "Họ tên" trong file. Vui lòng kiểm tra lại.')
+        setPreview([])
+        setColumnMaps([])
+        return
+      }
+
+      // Bước 2: Map header columns
+      const headerRow = allRows[headerRowIdx]
+      const maps: ColumnMap[] = []
+      for (let c = headerColStart; c < (headerRow?.length ?? 0); c++) {
+        const header = String(headerRow[c] ?? '').trim()
+        if (!header) continue
+        maps.push({ index: c, header, field: matchColumn(header) })
+      }
+      setColumnMaps(maps)
+
+      // Bước 3: Parse data rows
+      const getField = (row: (string | number | null)[], field: string): string => {
+        const map = maps.find(m => m.field === field)
+        if (!map) return ''
+        return String(row[map.index] ?? '').trim()
+      }
+
+      const parsed: PreviewRow[] = []
+      for (let r = headerRowIdx + 1; r < allRows.length; r++) {
+        const row = allRows[r]
+        if (!row) continue
+
+        const fullName = getField(row, 'fullName')
+        if (!fullName) continue // bỏ row không có họ tên
+
+        const rawPhone = getField(row, 'parentPhone')
+        const rawDob = getField(row, 'dateOfBirth')
+        const rawEnrolled = getField(row, 'enrolledDate')
+        const warnings: string[] = []
+
+        // Validate phone
+        if (rawPhone) {
+          const phoneResult = validatePhone(rawPhone)
+          if (phoneResult.invalid) {
+            warnings.push(`SĐT "${rawPhone}" không hợp lệ → chuyển sang ghi chú`)
+          }
+        }
+
+        // Validate dates
+        if (rawDob && !validateDate(rawDob)) {
+          warnings.push(`Ngày sinh "${rawDob}" không đúng định dạng → chuyển sang ghi chú`)
+        }
+        if (rawEnrolled && !validateDate(rawEnrolled)) {
+          warnings.push(`Ngày nhập học "${rawEnrolled}" không đúng định dạng → chuyển sang ghi chú`)
+        }
+
+        parsed.push({
+          sourceRow: r + 1, // Excel row (1-based)
+          fullName,
+          address: getField(row, 'address'),
+          parentPhone: rawPhone,
+          dateOfBirth: rawDob,
+          enrolledDate: rawEnrolled,
+          notes: getField(row, 'notes'),
+          warnings,
+        })
+      }
       setPreview(parsed)
     }
     reader.readAsArrayBuffer(f)
@@ -89,7 +222,6 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
     setLoading(true)
     setError('')
     try {
-      // Nếu chọn lớp → cập nhật StartDate cho lớp rồi import+enroll
       if (resolvedClassId && startDate) {
         const cls = classes.find(c => c.id === resolvedClassId)
         if (cls) {
@@ -115,15 +247,18 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
     }
   }
 
-  const validCount   = preview.filter(r => !r.error).length
-  const invalidCount = preview.filter(r => r.error).length
+  const validCount   = preview.filter(r => r.fullName).length
+  const warningCount = preview.filter(r => r.warnings.length > 0).length
+  const missingPhoneCount = preview.filter(r => !r.parentPhone).length
+  const mappedCols   = columnMaps.filter(m => m.field !== null)
+  const ignoredCols  = columnMaps.filter(m => m.field === null)
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-3xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-gray-800">Import học sinh</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
         </div>
 
         {!result && (
@@ -199,27 +334,33 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
 
             {showTemplate && (
               <div className="mb-4 border border-gray-200 rounded-lg overflow-hidden">
-                <div className="bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">File mẫu — 3 cột bắt buộc (hàng 1 là tiêu đề, dữ liệu từ hàng 2)</div>
+                <div className="bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">
+                  File mẫu — chỉ bắt buộc cột "Họ tên", các cột khác tuỳ chọn. Hệ thống tự nhận diện cột theo tên.
+                </div>
                 <table className="w-full text-xs">
                   <thead className="bg-green-50 text-green-800">
                     <tr>
-                      <th className="px-3 py-2 text-left border-r border-green-100">A: Họ tên *</th>
-                      <th className="px-3 py-2 text-left border-r border-green-100">B: Địa chỉ</th>
-                      <th className="px-3 py-2 text-left">C: SĐT phụ huynh</th>
+                      <th className="px-3 py-2 text-left border-r border-green-100">Họ tên *</th>
+                      <th className="px-3 py-2 text-left border-r border-green-100">Địa chỉ</th>
+                      <th className="px-3 py-2 text-left border-r border-green-100">SĐT phụ huynh</th>
+                      <th className="px-3 py-2 text-left border-r border-green-100">Ngày sinh</th>
+                      <th className="px-3 py-2 text-left border-r border-green-100">Ngày nhập học</th>
+                      <th className="px-3 py-2 text-left">Ghi chú</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-gray-600">
                     <tr>
                       <td className="px-3 py-1.5 border-r border-gray-100">Nguyễn Văn A</td>
                       <td className="px-3 py-1.5 border-r border-gray-100">123 Trần Hưng Đạo, Q.1</td>
-                      <td className="px-3 py-1.5">0901234567</td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-1.5 border-r border-gray-100">Trần Thị B</td>
-                      <td className="px-3 py-1.5 border-r border-gray-100">456 Lê Lợi, Q.3</td>
-                      <td className="px-3 py-1.5">0912345678</td>
+                      <td className="px-3 py-1.5 border-r border-gray-100">0901234567</td>
+                      <td className="px-3 py-1.5 border-r border-gray-100">15/06/2010</td>
+                      <td className="px-3 py-1.5 border-r border-gray-100">01/09/2024</td>
+                      <td className="px-3 py-1.5"></td>
                     </tr>
                     <tr className="text-gray-400 italic">
+                      <td className="px-3 py-1.5 border-r border-gray-100">...</td>
+                      <td className="px-3 py-1.5 border-r border-gray-100">...</td>
+                      <td className="px-3 py-1.5 border-r border-gray-100">...</td>
                       <td className="px-3 py-1.5 border-r border-gray-100">...</td>
                       <td className="px-3 py-1.5 border-r border-gray-100">...</td>
                       <td className="px-3 py-1.5">...</td>
@@ -231,12 +372,35 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
 
             {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
 
+            {/* Column mapping summary */}
+            {columnMaps.length > 0 && (
+              <div className="mb-3 p-3 bg-blue-50 rounded-lg text-xs space-y-1">
+                <p className="font-medium text-blue-800">Nhận diện cột:</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {mappedCols.map(m => (
+                    <span key={m.index} className="text-blue-700">
+                      <span className="text-green-600 font-medium">&#10003;</span> {m.header} <span className="text-blue-400">&#8594;</span> {KNOWN_COLUMNS[m.field!].label}
+                    </span>
+                  ))}
+                  {ignoredCols.map(m => (
+                    <span key={m.index} className="text-gray-400">
+                      <span className="text-amber-500">&#9888;</span> {m.header} <span className="text-gray-300">&#8594;</span> bỏ qua
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {preview.length > 0 && (
               <>
-                <div className="flex gap-4 mb-3 text-sm">
-                  <span className="text-green-600 font-medium">✓ {validCount} hàng hợp lệ</span>
-                  {invalidCount > 0 && (
-                    <span className="text-red-500 font-medium">✗ {invalidCount} hàng lỗi</span>
+                {/* Validation summary */}
+                <div className="flex flex-wrap gap-4 mb-3 text-sm">
+                  <span className="text-green-600 font-medium">&#10003; {validCount} học sinh</span>
+                  {warningCount > 0 && (
+                    <span className="text-amber-600 font-medium">&#9888; {warningCount} có dữ liệu cần xử lý</span>
+                  )}
+                  {missingPhoneCount > 0 && (
+                    <span className="text-gray-400">{missingPhoneCount} chưa có SĐT</span>
                   )}
                 </div>
 
@@ -244,27 +408,53 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
                   <table className="w-full text-xs">
                     <thead className="bg-gray-50 text-gray-500 uppercase sticky top-0">
                       <tr>
-                        <th className="px-3 py-2 text-left">#</th>
+                        <th className="px-3 py-2 text-left">Row</th>
                         <th className="px-3 py-2 text-left">Họ tên</th>
                         <th className="px-3 py-2 text-left">Địa chỉ</th>
                         <th className="px-3 py-2 text-left">SĐT PH</th>
+                        <th className="px-3 py-2 text-left">Ngày sinh</th>
+                        <th className="px-3 py-2 text-left">Nhập học</th>
+                        <th className="px-3 py-2 text-left">Ghi chú</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       {preview.map((row, i) => (
-                        <tr key={i} className={row.error ? 'bg-red-50' : ''}>
-                          <td className="px-3 py-1.5 text-gray-400">{i + 2}</td>
-                          <td className="px-3 py-1.5">
-                            {row.fullName || <span className="text-red-400 italic">Trống</span>}
-                            {row.error && <span className="ml-1 text-red-400">— {row.error}</span>}
-                          </td>
+                        <tr key={i} className={row.warnings.length > 0 ? 'bg-amber-50' : ''}>
+                          <td className="px-3 py-1.5 text-gray-400">{row.sourceRow}</td>
+                          <td className="px-3 py-1.5 font-medium">{row.fullName}</td>
                           <td className="px-3 py-1.5 text-gray-500">{row.address || '—'}</td>
-                          <td className="px-3 py-1.5 text-gray-500">{row.parentPhone || '—'}</td>
+                          <td className="px-3 py-1.5 text-gray-500">
+                            {row.parentPhone ? (
+                              validatePhone(row.parentPhone).invalid
+                                ? <span className="text-amber-600" title="Sẽ chuyển sang ghi chú">{row.parentPhone} &#9888;</span>
+                                : <span>{validatePhone(row.parentPhone).clean || row.parentPhone}</span>
+                            ) : '—'}
+                          </td>
+                          <td className="px-3 py-1.5 text-gray-500">
+                            {row.dateOfBirth ? (
+                              !validateDate(row.dateOfBirth)
+                                ? <span className="text-amber-600" title="Sẽ chuyển sang ghi chú">{row.dateOfBirth} &#9888;</span>
+                                : row.dateOfBirth
+                            ) : '—'}
+                          </td>
+                          <td className="px-3 py-1.5 text-gray-500">{row.enrolledDate || '—'}</td>
+                          <td className="px-3 py-1.5 text-gray-400">{row.notes || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+
+                {/* Warning details */}
+                {warningCount > 0 && (
+                  <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 space-y-1">
+                    <p className="font-medium">Dữ liệu không hợp lệ sẽ tự động chuyển sang ghi chú:</p>
+                    {preview.filter(r => r.warnings.length > 0).slice(0, 10).map((r, i) => (
+                      <p key={i}>Row {r.sourceRow}: {r.warnings.join('; ')}</p>
+                    ))}
+                    {warningCount > 10 && <p className="text-amber-500">... và {warningCount - 10} dòng khác</p>}
+                  </div>
+                )}
 
                 <div className="flex gap-2">
                   <button
@@ -293,12 +483,15 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
         {/* Kết quả sau khi import */}
         {result && (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 py-4">
-            <div className="text-5xl">{result.created > 0 ? '✅' : '⚠️'}</div>
+            <div className="text-5xl">{result.created > 0 ? '\u2705' : '\u26A0\uFE0F'}</div>
             <div className="text-center space-y-1">
               <p className="text-lg font-semibold text-gray-800">Import hoàn tất</p>
-              <p className="text-green-600 text-sm">✓ Tạo mới: <strong>{result.created}</strong> học sinh</p>
+              <p className="text-green-600 text-sm">&#10003; Tạo mới: <strong>{result.created}</strong> học sinh</p>
               {result.skipped > 0 && (
-                <p className="text-gray-400 text-sm">↷ Bỏ qua (trùng): <strong>{result.skipped}</strong></p>
+                <p className="text-gray-400 text-sm">&#8631; Bỏ qua (trùng): <strong>{result.skipped}</strong></p>
+              )}
+              {(result.warnings?.length ?? 0) > 0 && (
+                <p className="text-amber-600 text-sm">&#9888; {result.warnings!.length} giá trị không hợp lệ đã chuyển sang ghi chú</p>
               )}
               {result.errors.length > 0 && (
                 <div className="mt-2 text-left bg-red-50 rounded-lg p-3 text-xs text-red-600 space-y-1">

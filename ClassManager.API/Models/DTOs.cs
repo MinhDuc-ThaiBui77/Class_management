@@ -86,7 +86,7 @@ namespace ClassManager.API.Models.DTOs
 
     public record ImportRowError(int Row, string Message);
 
-    public record ImportResult(int Created, int Skipped, List<ImportRowError> Errors);
+    public record ImportResult(int Created, int Skipped, List<ImportRowError> Errors, List<ImportRowError>? Warnings = null);
 
     // ── Payment ──────────────────────────────────────────────────────
 
