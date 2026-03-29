@@ -86,7 +86,18 @@ namespace ClassManager.API.Models.DTOs
 
     public record ImportRowError(int Row, string Message);
 
-    public record ImportResult(int Created, int Skipped, List<ImportRowError> Errors, List<ImportRowError>? Warnings = null);
+    public record DuplicateSuspect(
+        int Row, string Name, string Phone, string? DateOfBirth,
+        int ExistingId, string ExistingName, string ExistingPhone, string? ExistingDob,
+        string MatchType  // "name_phone", "name_dob", "name_only"
+    );
+
+    public record ImportResult(
+        int Created, int Skipped,
+        List<ImportRowError> Errors,
+        List<ImportRowError>? Warnings = null,
+        List<DuplicateSuspect>? Suspects = null
+    );
 
     // ── Payment ──────────────────────────────────────────────────────
 

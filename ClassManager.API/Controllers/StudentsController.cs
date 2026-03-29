@@ -102,7 +102,7 @@ namespace ClassManager.API.Controllers
         // POST import — teacher import HS (sẽ enroll qua classes endpoint), manager+ import tự do
         [HttpPost("import")]
         [Authorize(Roles = Roles.ManagerUp)]
-        public async Task<IActionResult> Import(IFormFile file)
+        public async Task<IActionResult> Import(IFormFile file, [FromForm] string? dupDecisions)
         {
             if (file == null || file.Length == 0)
                 return BadRequest(new { message = "Vui lòng chọn file Excel." });
@@ -110,14 +110,25 @@ namespace ClassManager.API.Controllers
                 return BadRequest(new { message = "Chỉ hỗ trợ file .xlsx" });
             try
             {
+                var decisions = ParseDupDecisions(dupDecisions);
                 using var stream = file.OpenReadStream();
-                var (result, _) = await _importSvc.ImportStudentsAsync(stream);
+                var (result, _) = await _importSvc.ImportStudentsAsync(stream, decisions);
                 return Ok(result);
             }
             catch (Exception ex)
             {
                 return BadRequest(new { message = $"Lỗi đọc file: {ex.Message}" });
             }
+        }
+
+        private static Dictionary<int, string>? ParseDupDecisions(string? json)
+        {
+            if (string.IsNullOrEmpty(json)) return null;
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, string>>(json);
+            }
+            catch { return null; }
         }
     }
 }

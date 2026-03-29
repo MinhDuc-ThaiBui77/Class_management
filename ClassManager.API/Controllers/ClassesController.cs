@@ -121,7 +121,7 @@ namespace ClassManager.API.Controllers
         }
 
         [HttpPost("{id}/students/import")]
-        public async Task<IActionResult> ImportStudents(int id, IFormFile file)
+        public async Task<IActionResult> ImportStudents(int id, IFormFile file, [FromForm] string? dupDecisions)
         {
             // Teacher import vào lớp mình
             if (!IsManagerUp)
@@ -135,8 +135,9 @@ namespace ClassManager.API.Controllers
                 return BadRequest(new { message = "Chỉ hỗ trợ file .xlsx" });
             try
             {
+                var decisions = ParseDupDecisions(dupDecisions);
                 using var stream = file.OpenReadStream();
-                var result = await _importSvc.ImportAndEnrollAsync(id, stream);
+                var result = await _importSvc.ImportAndEnrollAsync(id, stream, decisions);
                 return Ok(result);
             }
             catch (InvalidOperationException ex)
@@ -147,6 +148,16 @@ namespace ClassManager.API.Controllers
             {
                 return BadRequest(new { message = $"Lỗi đọc file: {ex.Message}" });
             }
+        }
+
+        private static Dictionary<int, string>? ParseDupDecisions(string? json)
+        {
+            if (string.IsNullOrEmpty(json)) return null;
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, string>>(json);
+            }
+            catch { return null; }
         }
     }
 }

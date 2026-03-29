@@ -9,11 +9,29 @@ namespace ClassManager.API.Services
         private readonly AppDbContext _db;
         public ExportService(AppDbContext db) => _db = db;
 
+        // ── Canonical student columns ────────────────────────────────
+        // Editable (import + export): Họ tên, Địa chỉ, SĐT phụ huynh, Ngày sinh, Ngày nhập học, Ghi chú
+        // Read-only (export only):    STT, Lớp đang học
+
+        private static readonly string[] StudentEditableHeaders =
+            ["Họ tên", "Địa chỉ", "SĐT phụ huynh", "Ngày sinh", "Ngày nhập học", "Ghi chú"];
+
+        private static readonly string[] StudentReadOnlyHeaders =
+            ["STT", "Lớp đang học"];
+
         private static void StyleHeader(IXLRow row)
         {
             row.Style.Font.Bold = true;
             row.Style.Fill.BackgroundColor = XLColor.FromHtml("#DE2228");
             row.Style.Font.FontColor = XLColor.White;
+        }
+
+        private static void StyleReadOnlyHeader(IXLCell cell)
+        {
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#999999");
+            cell.Style.Font.FontColor = XLColor.White;
+            cell.Style.Font.Bold = true;
+            cell.Style.Font.Italic = true;
         }
 
         // ── Xuất danh sách học sinh ────────────────────────────────
@@ -32,27 +50,42 @@ namespace ClassManager.API.Services
                 .OrderBy(s => s.FullName)
                 .Select(s => new
                 {
-                    s.FullName, s.Address, s.ParentPhone, s.EnrolledDate, s.Notes,
+                    s.FullName, s.Address, s.ParentPhone, s.DateOfBirth, s.EnrolledDate, s.Notes,
                     Classes = string.Join(", ", s.StudentClasses.Select(sc => sc.Class.Name + " " + sc.Class.Subject))
                 }).ToListAsync();
 
             using var wb = new XLWorkbook();
             var ws = wb.AddWorksheet("Danh sách học sinh");
-            var headers = new[] { "STT", "Họ tên", "Địa chỉ", "SĐT phụ huynh", "Lớp đang học", "Ngày nhập học", "Ghi chú" };
-            for (int i = 0; i < headers.Length; i++) ws.Cell(1, i + 1).Value = headers[i];
+
+            // Header: STT (read-only) + editable columns + Lớp đang học (read-only)
+            ws.Cell(1, 1).Value = "STT";
+            StyleReadOnlyHeader(ws.Cell(1, 1));
+            for (int i = 0; i < StudentEditableHeaders.Length; i++)
+                ws.Cell(1, i + 2).Value = StudentEditableHeaders[i];
+            ws.Cell(1, StudentEditableHeaders.Length + 2).Value = "Lớp đang học";
+            StyleReadOnlyHeader(ws.Cell(1, StudentEditableHeaders.Length + 2));
             StyleHeader(ws.Row(1));
+            // Re-apply read-only style on top
+            StyleReadOnlyHeader(ws.Cell(1, 1));
+            StyleReadOnlyHeader(ws.Cell(1, StudentEditableHeaders.Length + 2));
 
             for (int i = 0; i < students.Count; i++)
             {
                 var s = students[i];
-                ws.Cell(i + 2, 1).Value = i + 1;
-                ws.Cell(i + 2, 2).Value = s.FullName;
-                ws.Cell(i + 2, 3).Value = s.Address;
-                ws.Cell(i + 2, 4).Value = s.ParentPhone;
-                ws.Cell(i + 2, 5).Value = s.Classes;
-                ws.Cell(i + 2, 6).Value = s.EnrolledDate.ToString("dd/MM/yyyy");
-                ws.Cell(i + 2, 7).Value = s.Notes;
+                var r = i + 2;
+                ws.Cell(r, 1).Value = i + 1;                                          // STT
+                ws.Cell(r, 2).Value = s.FullName;                                      // Họ tên
+                ws.Cell(r, 3).Value = s.Address;                                       // Địa chỉ
+                ws.Cell(r, 4).Value = s.ParentPhone;                                   // SĐT phụ huynh
+                ws.Cell(r, 5).Value = s.DateOfBirth?.ToString("dd/MM/yyyy") ?? "";     // Ngày sinh
+                ws.Cell(r, 6).Value = s.EnrolledDate.ToString("dd/MM/yyyy");           // Ngày nhập học
+                ws.Cell(r, 7).Value = s.Notes;                                         // Ghi chú
+                ws.Cell(r, 8).Value = s.Classes;                                       // Lớp đang học
             }
+
+            // Style read-only columns
+            ws.Column(1).Style.Font.FontColor = XLColor.Gray;
+            ws.Column(StudentEditableHeaders.Length + 2).Style.Font.FontColor = XLColor.Gray;
             ws.Columns().AdjustToContents();
             return ToBytes(wb);
         }
@@ -92,7 +125,7 @@ namespace ClassManager.API.Services
             return ToBytes(wb);
         }
 
-        // ── Xuất chi tiết 1 lớp (DS học sinh) ────────────────────
+        // ── Xuất chi tiết 1 lớp (DS học sinh) — cùng canonical format ──
         public async Task<byte[]> ExportClassStudentsAsync(int classId)
         {
             var cls = await _db.Classes.Include(c => c.Teacher).FirstOrDefaultAsync(c => c.Id == classId);
@@ -101,28 +134,43 @@ namespace ClassManager.API.Services
             var students = await _db.StudentClasses
                 .Where(sc => sc.ClassId == classId && sc.Student.IsActive)
                 .OrderBy(sc => sc.Student.FullName)
-                .Select(sc => new { sc.Student.FullName, sc.Student.Address, sc.Student.ParentPhone, sc.EnrolledDate })
+                .Select(sc => new
+                {
+                    sc.Student.FullName, sc.Student.Address, sc.Student.ParentPhone,
+                    sc.Student.DateOfBirth, sc.Student.EnrolledDate, sc.Student.Notes
+                })
                 .ToListAsync();
 
             using var wb = new XLWorkbook();
             var ws = wb.AddWorksheet($"Lớp {cls.Name}");
+
+            // Metadata rows
             ws.Cell(1, 1).Value = $"Lớp {cls.Name} - {cls.Subject}";
             ws.Cell(1, 1).Style.Font.Bold = true; ws.Cell(1, 1).Style.Font.FontSize = 14;
             ws.Cell(2, 1).Value = $"GV: {cls.Teacher?.FullName ?? "Chưa có"} · {students.Count} học sinh";
 
-            var headers = new[] { "STT", "Họ tên", "Địa chỉ", "SĐT phụ huynh", "Ngày đăng ký" };
-            for (int i = 0; i < headers.Length; i++) ws.Cell(4, i + 1).Value = headers[i];
+            // Header row 4 — same canonical format
+            ws.Cell(4, 1).Value = "STT";
+            StyleReadOnlyHeader(ws.Cell(4, 1));
+            for (int i = 0; i < StudentEditableHeaders.Length; i++)
+                ws.Cell(4, i + 2).Value = StudentEditableHeaders[i];
             StyleHeader(ws.Row(4));
+            StyleReadOnlyHeader(ws.Cell(4, 1));
 
             for (int i = 0; i < students.Count; i++)
             {
                 var s = students[i];
-                ws.Cell(i + 5, 1).Value = i + 1;
-                ws.Cell(i + 5, 2).Value = s.FullName;
-                ws.Cell(i + 5, 3).Value = s.Address;
-                ws.Cell(i + 5, 4).Value = s.ParentPhone;
-                ws.Cell(i + 5, 5).Value = s.EnrolledDate.ToString("dd/MM/yyyy");
+                var r = i + 5;
+                ws.Cell(r, 1).Value = i + 1;                                          // STT
+                ws.Cell(r, 2).Value = s.FullName;                                      // Họ tên
+                ws.Cell(r, 3).Value = s.Address;                                       // Địa chỉ
+                ws.Cell(r, 4).Value = s.ParentPhone;                                   // SĐT phụ huynh
+                ws.Cell(r, 5).Value = s.DateOfBirth?.ToString("dd/MM/yyyy") ?? "";     // Ngày sinh
+                ws.Cell(r, 6).Value = s.EnrolledDate.ToString("dd/MM/yyyy");           // Ngày nhập học
+                ws.Cell(r, 7).Value = s.Notes;                                         // Ghi chú
             }
+
+            ws.Column(1).Style.Font.FontColor = XLColor.Gray;
             ws.Columns().AdjustToContents();
             return ToBytes(wb);
         }
@@ -156,7 +204,6 @@ namespace ClassManager.API.Services
             ws.Cell(1, 1).Style.Font.Bold = true; ws.Cell(1, 1).Style.Font.FontSize = 14;
             ws.Cell(2, 1).Value = $"GV: {cls.Teacher?.FullName ?? "Chưa có"} · {sessions.Count} buổi · {students.Count} HS";
 
-            // Header: STT | Họ tên | Buổi 1 (dd/MM) | Buổi 2 | ...
             ws.Cell(4, 1).Value = "STT"; ws.Cell(4, 2).Value = "Họ tên";
             for (int j = 0; j < sessions.Count; j++)
             {

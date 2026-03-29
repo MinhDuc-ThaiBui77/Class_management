@@ -113,14 +113,16 @@ export const usersApi = {
 export const importApi = {
   downloadTemplate: () =>
     api.get('/students/import-template', { responseType: 'blob' }),
-  importStudents: (file: File) => {
+  importStudents: (file: File, dupDecisions?: Record<number, string>) => {
     const form = new FormData()
     form.append('file', file)
+    if (dupDecisions) form.append('dupDecisions', JSON.stringify(dupDecisions))
     return api.post('/students/import', form)
   },
-  importToClass: (classId: number, file: File) => {
+  importToClass: (classId: number, file: File, dupDecisions?: Record<number, string>) => {
     const form = new FormData()
     form.append('file', file)
+    if (dupDecisions) form.append('dupDecisions', JSON.stringify(dupDecisions))
     return api.post(`/classes/${classId}/students/import`, form)
   },
 }
