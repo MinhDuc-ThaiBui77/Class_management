@@ -29,6 +29,58 @@ namespace ClassManager.API.Services
                 throw new InvalidOperationException($"SĐT \"{phone.Trim()}\" không hợp lệ. SĐT phải có 10 số và bắt đầu bằng 0.");
             return digits;
         }
+
+        /// <summary>
+        /// Soft normalize cho import: xóa separator, chuẩn hóa 9→10 số.
+        /// Trả (cleanPhone, invalidOriginal). Không throw.
+        /// </summary>
+        public static (string? Clean, string? Invalid) TryNormalize(string? phone)
+        {
+            if (string.IsNullOrWhiteSpace(phone)) return (null, null);
+            var raw = phone.Trim();
+            var cleaned = System.Text.RegularExpressions.Regex.Replace(raw, @"[\s.\-()]", "");
+            var digits = new string(cleaned.Where(char.IsDigit).ToArray());
+
+            if (digits.Length < 9 || digits.Length > 11 || digits.Length != cleaned.Length)
+                return (null, raw); // không phải SĐT → trả invalid
+
+            if (digits.Length == 9 && digits[0] != '0')
+                digits = "0" + digits;
+
+            if (digits.Length == 10 && digits[0] == '0')
+                return (digits, null);
+
+            return (null, raw);
+        }
+    }
+
+    public static class NameHelper
+    {
+        /// <summary>
+        /// Chuẩn hóa tên tiếng Việt: trim, bỏ space thừa, viết hoa chữ cái đầu mỗi từ.
+        /// "nguyễn  văn a" → "Nguyễn Văn A"
+        /// </summary>
+        public static string NormalizeVietnamese(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "";
+            var words = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < words.Length; i++)
+            {
+                var w = words[i].ToLower();
+                words[i] = char.ToUpper(w[0]) + w[1..];
+            }
+            return string.Join(" ", words);
+        }
+
+        /// <summary>
+        /// Normalize tên để so sánh dedup: lowercase, bỏ space thừa.
+        /// </summary>
+        public static string NormalizeForCompare(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "";
+            var words = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return string.Join(" ", words).ToLower();
+        }
     }
 
     public class TeacherService

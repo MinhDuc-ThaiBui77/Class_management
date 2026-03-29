@@ -60,7 +60,7 @@ namespace ClassManager.API.Services
             Validate(req);
             var student = new Student
             {
-                FullName     = req.FullName.Trim(),
+                FullName     = NameHelper.NormalizeVietnamese(req.FullName),
                 Address      = req.Address.Trim(),
                 ParentPhone  = PhoneHelper.Normalize(req.ParentPhone),
                 DateOfBirth  = req.DateOfBirth.HasValue ? DateTime.SpecifyKind(req.DateOfBirth.Value, DateTimeKind.Utc) : null,
@@ -78,7 +78,7 @@ namespace ClassManager.API.Services
             var student = await _db.Students.FindAsync(id);
             if (student == null) return null;
 
-            student.FullName    = req.FullName.Trim();
+            student.FullName    = NameHelper.NormalizeVietnamese(req.FullName);
             student.Address     = req.Address.Trim();
             student.ParentPhone = PhoneHelper.Normalize(req.ParentPhone);
             student.DateOfBirth = req.DateOfBirth.HasValue ? DateTime.SpecifyKind(req.DateOfBirth.Value, DateTimeKind.Utc) : null;
