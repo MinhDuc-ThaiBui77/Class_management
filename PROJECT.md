@@ -4,7 +4,6 @@
 > Cập nhật lần cuối: 2026-03-27
 
 ---
-
 ## 1. Tổng quan
 
 Ứng dụng quản lý trung tâm dạy học tư nhân. Gồm:
