@@ -60,6 +60,7 @@ interface DuplicateSuspect {
   row: number; name: string; phone: string; dateOfBirth: string | null
   existingId: number; existingName: string; existingPhone: string; existingDob: string | null
   matchType: string
+  existingRow?: number | null  // trùng với dòng trước trong cùng file
 }
 
 interface ImportResult {
@@ -69,7 +70,12 @@ interface ImportResult {
   suspects?: DuplicateSuspect[]
 }
 
-interface ClassOption { id: number; name: string; subject: string; teacherName: string | null; startDate: string | null }
+interface ClassOption {
+  id: number; name: string; subject: string; notes: string
+  teacherId: number | null; teacherName: string | null
+  totalSessions: number | null; tuitionFee: number | null; teacherSharePercent: number
+  startDate: string | null
+}
 
 interface Props {
   mode: 'students' | 'class'
@@ -184,13 +190,15 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
   }
 
   // ── Import ──────────────────────────────────────────────────────
+  // BE chỉ ghi khi mọi dòng nghi trùng đã có quyết định; nếu còn suspects thì chưa có gì được lưu
   const handleImport = async () => {
     if (!file) return
     setLoading(true); setError('')
     try {
       if (resolvedClassId && startDate) {
         const cls = classes.find(c => c.id === resolvedClassId)
-        if (cls) await classesApi.update(resolvedClassId as number, { name: cls.name, subject: cls.subject, teacherId: null, notes: '', startDate })
+        // PUT ghi đè toàn bộ lớp → gửi đủ field hiện có, chỉ đổi startDate
+        if (cls) await classesApi.update(cls.id, { ...cls, startDate })
       }
 
       const decisions = Object.keys(dupDecisions).length > 0 ? dupDecisions : undefined
@@ -200,15 +208,11 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
 
       const data = res.data as ImportResult
 
-      // Nếu có suspects → hiện UI cho user quyết định
+      // Nếu có suspects → hiện UI cho user quyết định từng dòng
       if (data.suspects && data.suspects.length > 0) {
         setPendingSuspects(data.suspects)
-        // Pre-fill decisions = "ask" (chưa quyết)
-        const newDec: Record<number, string> = { ...dupDecisions }
-        data.suspects.forEach(s => { if (!(s.row in newDec)) newDec[s.row] = 'create' })
-        setDupDecisions(newDec)
-        setResult(data)
       } else {
+        setPendingSuspects([])
         setResult(data)
         onDone()
       }
@@ -219,22 +223,7 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
     }
   }
 
-  // ── Re-import with decisions ────────────────────────────────────
-  const handleReimportWithDecisions = async () => {
-    if (!file) return
-    setLoading(true); setError(''); setPendingSuspects([])
-    try {
-      const res = resolvedClassId
-        ? await importApi.importToClass(resolvedClassId as number, file, dupDecisions)
-        : await importApi.importStudents(file, dupDecisions)
-      setResult(res.data)
-      onDone()
-    } catch (err: any) {
-      setError(err.response?.data?.message ?? 'Có lỗi xảy ra.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const undecidedCount = pendingSuspects.filter(s => !dupDecisions[s.row]).length
 
   const validCount = preview.filter(r => r.fullName).length
   const warningCount = preview.filter(r => r.warnings.length > 0).length
@@ -263,12 +252,10 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
           <div className="flex-1 overflow-auto">
             <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <p className="font-medium text-amber-800 text-sm mb-1">Phát hiện {pendingSuspects.length} học sinh nghi trùng</p>
-              <p className="text-xs text-amber-600">Vui lòng chọn hành động cho mỗi học sinh:</p>
+              <p className="text-xs text-amber-600">Chưa có học sinh nào được lưu. Chọn hành động cho mỗi học sinh rồi bấm Xác nhận để import cả file:</p>
             </div>
 
-            {result && result.created > 0 && (
-              <p className="text-sm text-green-600 mb-3">&#10003; Đã tạo {result.created} học sinh mới{result.skipped > 0 ? `, bỏ qua ${result.skipped} trùng chính xác` : ''}</p>
-            )}
+            {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
 
             <div className="space-y-3 mb-4">
               {pendingSuspects.map(s => (
@@ -281,7 +268,7 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
                         {s.dateOfBirth && <span className="text-gray-400 ml-2">{s.dateOfBirth}</span>}
                       </p>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        {matchTypeLabel(s.matchType)} với HS #{s.existingId}: <strong>{s.existingName}</strong>
+                        {matchTypeLabel(s.matchType)} với {s.existingRow ? `Row ${s.existingRow} trong file` : `HS #${s.existingId}`}: <strong>{s.existingName}</strong>
                         {s.existingPhone && <span className="ml-1">({s.existingPhone})</span>}
                         {s.existingDob && <span className="ml-1">- {s.existingDob}</span>}
                       </p>
@@ -308,11 +295,11 @@ export default function ImportModal({ mode, classId, onClose, onDone }: Props) {
             </div>
 
             <div className="flex gap-2">
-              <button onClick={handleReimportWithDecisions} disabled={loading}
+              <button onClick={handleImport} disabled={loading || undecidedCount > 0}
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50">
-                {loading ? 'Đang xử lý...' : 'Xác nhận & Import'}
+                {loading ? 'Đang xử lý...' : undecidedCount > 0 ? `Còn ${undecidedCount} học sinh chưa chọn` : 'Xác nhận & Import'}
               </button>
-              <button onClick={() => { setPendingSuspects([]); setResult(null) }}
+              <button onClick={() => { setPendingSuspects([]); setError('') }}
                 className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition">
                 Quay lại
               </button>

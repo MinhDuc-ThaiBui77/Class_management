@@ -51,15 +51,18 @@ namespace ClassManager.API.Services
         }
 
         // ── Import học sinh: 3-tier dedup ───────────────────────────────
+        // Duyệt hết file trước rồi mới ghi: nếu còn dòng nghi trùng chưa có quyết định
+        // thì không ghi gì, trả suspects để user quyết rồi gửi lại cả file.
         public async Task<(ImportResult Result, List<int> StudentIds)> ImportStudentsAsync(
             Stream fileStream, Dictionary<int, string>? dupDecisions = null)
         {
             var rows = ParseRows(fileStream);
-            int created = 0, skipped = 0;
+            int skipped = 0;
             var errors   = new List<ImportRowError>();
             var warnings = new List<ImportRowError>();
             var suspects = new List<DuplicateSuspect>();
-            var studentIds = new List<int>();
+            var planned  = new List<Student>();
+            var rowTargets = new List<MatchTarget>(); // HS ứng với mỗi dòng (tạo mới hoặc bỏ qua) → dùng để enroll
 
             // Load existing students for dedup
             var existingStudents = await _db.Students
@@ -67,34 +70,27 @@ namespace ClassManager.API.Services
                 .Select(s => new { s.Id, s.FullName, s.ParentPhone, s.DateOfBirth })
                 .ToListAsync();
 
-            // Build lookup structures
-            var exactKeys = new Dictionary<string, int>();   // name+dob+phone → id
-            var namePhoneKeys = new Dictionary<string, int>(); // name+phone → id
-            var nameDobKeys = new Dictionary<string, int>();   // name+dob → id
-            var nameOnlyKeys = new Dictionary<string, List<int>>(); // name → [ids]
+            // Build lookup structures — gồm cả HS có sẵn và HS sắp tạo từ các dòng trước trong file
+            var exactKeys     = new Dictionary<string, MatchTarget>(); // name+dob+phone
+            var namePhoneKeys = new Dictionary<string, MatchTarget>(); // name+phone
+            var nameDobKeys   = new Dictionary<string, MatchTarget>(); // name+dob
+            var nameOnlyKeys  = new Dictionary<string, MatchTarget>(); // name
+
+            void Register(MatchTarget t, string normName, string phone, string dobKey)
+            {
+                if (!string.IsNullOrEmpty(phone) && !string.IsNullOrEmpty(dobKey))
+                    exactKeys.TryAdd($"{normName}|{dobKey}|{phone}", t);
+                if (!string.IsNullOrEmpty(phone))
+                    namePhoneKeys.TryAdd($"{normName}|{phone}", t);
+                if (!string.IsNullOrEmpty(dobKey))
+                    nameDobKeys.TryAdd($"{normName}|{dobKey}", t);
+                nameOnlyKeys.TryAdd(normName, t);
+            }
 
             foreach (var s in existingStudents)
             {
-                var normName = NameHelper.NormalizeForCompare(s.FullName);
-                var normPhone = s.ParentPhone ?? "";
-                var dobKey = s.DateOfBirth?.ToString("yyyyMMdd") ?? "";
-
-                // Exact: name + dob + phone (all 3)
-                if (!string.IsNullOrEmpty(normPhone) && !string.IsNullOrEmpty(dobKey))
-                    exactKeys.TryAdd($"{normName}|{dobKey}|{normPhone}", s.Id);
-
-                // name + phone
-                if (!string.IsNullOrEmpty(normPhone))
-                    namePhoneKeys.TryAdd($"{normName}|{normPhone}", s.Id);
-
-                // name + dob
-                if (!string.IsNullOrEmpty(dobKey))
-                    nameDobKeys.TryAdd($"{normName}|{dobKey}", s.Id);
-
-                // name only
-                if (!nameOnlyKeys.ContainsKey(normName))
-                    nameOnlyKeys[normName] = [];
-                nameOnlyKeys[normName].Add(s.Id);
+                var target = new MatchTarget { ExistingId = s.Id, Name = s.FullName, Phone = s.ParentPhone ?? "", Dob = s.DateOfBirth };
+                Register(target, NameHelper.NormalizeForCompare(s.FullName), s.ParentPhone ?? "", s.DateOfBirth?.ToString("yyyyMMdd") ?? "");
             }
 
             foreach (var row in rows)
@@ -142,68 +138,63 @@ namespace ClassManager.API.Services
                 var dobKey = dob.Date?.ToString("yyyyMMdd") ?? "";
 
                 // ── 3-tier dedup ──────────────────────────────────────
-                int? matchedId = null;
+                MatchTarget? match = null;
                 string? matchTier = null;
 
                 // Tier 1: Exact (name + dob + phone → auto-skip)
                 if (!string.IsNullOrEmpty(normalizedPhone) && !string.IsNullOrEmpty(dobKey))
                 {
                     var key = $"{compareName}|{dobKey}|{normalizedPhone}";
-                    if (exactKeys.TryGetValue(key, out var eid))
-                    { matchedId = eid; matchTier = "exact"; }
+                    if (exactKeys.TryGetValue(key, out var t))
+                    { match = t; matchTier = "exact"; }
                 }
 
                 // Tier 2: Partial match → suspect (hỏi user)
-                if (matchedId == null)
+                if (match == null)
                 {
                     // name + phone
                     if (!string.IsNullOrEmpty(normalizedPhone))
                     {
                         var key = $"{compareName}|{normalizedPhone}";
-                        if (namePhoneKeys.TryGetValue(key, out var eid))
-                        { matchedId = eid; matchTier = "name_phone"; }
+                        if (namePhoneKeys.TryGetValue(key, out var t))
+                        { match = t; matchTier = "name_phone"; }
                     }
                     // name + dob
-                    if (matchedId == null && !string.IsNullOrEmpty(dobKey))
+                    if (match == null && !string.IsNullOrEmpty(dobKey))
                     {
                         var key = $"{compareName}|{dobKey}";
-                        if (nameDobKeys.TryGetValue(key, out var eid))
-                        { matchedId = eid; matchTier = "name_dob"; }
+                        if (nameDobKeys.TryGetValue(key, out var t))
+                        { match = t; matchTier = "name_dob"; }
                     }
                     // name only (cả 2 thiếu phone + dob)
-                    if (matchedId == null && string.IsNullOrEmpty(normalizedPhone) && string.IsNullOrEmpty(dobKey))
+                    if (match == null && string.IsNullOrEmpty(normalizedPhone) && string.IsNullOrEmpty(dobKey))
                     {
-                        if (nameOnlyKeys.TryGetValue(compareName, out var eids) && eids.Count > 0)
-                        { matchedId = eids[0]; matchTier = "name_only"; }
+                        if (nameOnlyKeys.TryGetValue(compareName, out var t))
+                        { match = t; matchTier = "name_only"; }
                     }
                 }
 
                 // Xử lý kết quả dedup
-                if (matchedId != null && matchTier == "exact")
+                if (match != null && matchTier == "exact")
                 {
                     // Tier 1: chắc chắn trùng → auto-skip
-                    studentIds.Add(matchedId.Value);
+                    rowTargets.Add(match);
                     skipped++;
                     continue;
                 }
 
-                if (matchedId != null && matchTier != null)
+                if (match != null && matchTier != null)
                 {
                     // Tier 2: nghi ngờ → kiểm tra dupDecisions
-                    var existing = existingStudents.First(s => s.Id == matchedId.Value);
                     var decision = dupDecisions?.GetValueOrDefault(row.SourceRow, "ask") ?? "ask";
 
                     if (decision == "skip")
                     {
-                        studentIds.Add(matchedId.Value);
+                        rowTargets.Add(match);
                         skipped++;
                         continue;
                     }
-                    else if (decision == "create")
-                    {
-                        // Fall through to create new
-                    }
-                    else
+                    else if (decision != "create")
                     {
                         // "ask" → thêm vào suspects, không tạo
                         suspects.Add(new DuplicateSuspect(
@@ -211,17 +202,19 @@ namespace ClassManager.API.Services
                             normalizedName,
                             normalizedPhone,
                             dob.Date?.ToString("dd/MM/yyyy"),
-                            matchedId.Value,
-                            existing.FullName,
-                            existing.ParentPhone ?? "",
-                            existing.DateOfBirth?.ToString("dd/MM/yyyy"),
-                            matchTier
+                            match.ExistingId ?? 0,
+                            match.Name,
+                            match.Phone,
+                            match.Dob?.ToString("dd/MM/yyyy"),
+                            matchTier,
+                            match.PlannedRow
                         ));
                         continue;
                     }
+                    // "create" → fall through to create new
                 }
 
-                // Tier 3: không khớp → tạo mới
+                // Tier 3: không khớp → lên kế hoạch tạo mới
                 var student = new Student
                 {
                     FullName     = normalizedName,
@@ -231,26 +224,35 @@ namespace ClassManager.API.Services
                     EnrolledDate = enrolled.Date ?? DateTime.UtcNow,
                     Notes        = string.Join(" | ", notesParts),
                 };
-
-                _db.Students.Add(student);
-                await _db.SaveChangesAsync();
-                studentIds.Add(student.Id);
+                planned.Add(student);
 
                 // Add to lookup for subsequent rows in same batch
-                var newExact = $"{compareName}|{dobKey}|{normalizedPhone}";
-                exactKeys.TryAdd(newExact, student.Id);
-                if (!string.IsNullOrEmpty(normalizedPhone))
-                    namePhoneKeys.TryAdd($"{compareName}|{normalizedPhone}", student.Id);
-                if (!string.IsNullOrEmpty(dobKey))
-                    nameDobKeys.TryAdd($"{compareName}|{dobKey}", student.Id);
-                if (!nameOnlyKeys.ContainsKey(compareName))
-                    nameOnlyKeys[compareName] = [];
-                nameOnlyKeys[compareName].Add(student.Id);
-
-                created++;
+                var newTarget = new MatchTarget { Planned = student, PlannedRow = row.SourceRow, Name = normalizedName, Phone = normalizedPhone, Dob = dob.Date };
+                rowTargets.Add(newTarget);
+                Register(newTarget, compareName, normalizedPhone, dobKey);
             }
 
-            return (new ImportResult(created, skipped, errors, warnings, suspects), studentIds);
+            // Còn dòng nghi trùng chưa quyết → không ghi gì
+            if (suspects.Count > 0)
+                return (new ImportResult(0, 0, errors, warnings, suspects), new List<int>());
+
+            // Ghi tất cả trong 1 lần SaveChanges → hoặc đủ hết, hoặc không có gì
+            _db.Students.AddRange(planned);
+            await _db.SaveChangesAsync();
+
+            var studentIds = rowTargets.Select(t => t.ExistingId ?? t.Planned!.Id).ToList();
+            return (new ImportResult(planned.Count, skipped, errors, warnings, suspects), studentIds);
+        }
+
+        // HS mà một dòng import khớp tới: có sẵn trong DB, hoặc sẽ được tạo từ dòng trước trong file
+        private class MatchTarget
+        {
+            public int? ExistingId { get; init; }
+            public Student? Planned { get; init; }
+            public int? PlannedRow { get; init; }
+            public string Name { get; init; } = "";
+            public string Phone { get; init; } = "";
+            public DateTime? Dob { get; init; }
         }
 
         // ── Import + enroll vào lớp ───────────────────────────────────
