@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showForgot, setShowForgot] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,8 +24,10 @@ export default function LoginPage() {
         role: res.data.role,
       }, res.data.mustChangePassword)
       navigate('/')
-    } catch {
-      setError('Email hoặc mật khẩu không đúng.')
+    } catch (err: any) {
+      if (err.response?.status === 401) setError('Email hoặc mật khẩu không đúng.')
+      else if (!err.response) setError('Không kết nối được máy chủ. Máy chủ có thể đang khởi động, vui lòng thử lại sau ít phút.')
+      else setError(err.response.data?.message ?? 'Có lỗi xảy ra, vui lòng thử lại.')
     } finally {
       setLoading(false)
     }
@@ -96,7 +99,16 @@ export default function LoginPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Mật khẩu</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-gray-700">Mật khẩu</label>
+                  <button type="button" onClick={() => setShowForgot(v => !v)}
+                    className="text-xs text-red-600 hover:text-red-700 transition">Quên mật khẩu?</button>
+                </div>
+                {showForgot && (
+                  <div className="mb-2 bg-amber-50 border border-amber-100 text-amber-800 px-3 py-2 rounded-lg text-xs">
+                    Liên hệ quản trị viên trung tâm để được đặt lại mật khẩu. Sau khi đăng nhập bằng mật khẩu mới, bạn sẽ được yêu cầu đổi mật khẩu.
+                  </div>
+                )}
                 <input
                   type="password"
                   value={password}

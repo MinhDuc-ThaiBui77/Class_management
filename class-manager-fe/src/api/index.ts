@@ -13,7 +13,8 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   res => res,
   err => {
-    if (err.response?.status === 401) {
+    // Sai mật khẩu ở trang login cũng trả 401 → để LoginPage tự hiện lỗi, không reload
+    if (err.response?.status === 401 && !err.config?.url?.endsWith('/auth/login')) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       window.location.href = '/login'

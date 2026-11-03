@@ -225,6 +225,7 @@ namespace ClassManager.API.Services
             if (!Roles.IsAbove(callerRole, user.Role) && callerRole != Roles.Owner)
                 return (false, "Không có quyền reset mật khẩu tài khoản này.");
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+            user.MustChangePassword = true; // bắt user tự đổi lại sau khi đăng nhập bằng mật khẩu admin cấp
             await _db.SaveChangesAsync();
             return (true, null);
         }
