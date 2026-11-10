@@ -8,8 +8,13 @@ namespace ClassManager.API.Services
     public class UserService
     {
         private readonly AppDbContext _db;
+        private readonly UserStatusCache _statusCache;
 
-        public UserService(AppDbContext db) => _db = db;
+        public UserService(AppDbContext db, UserStatusCache statusCache)
+        {
+            _db = db;
+            _statusCache = statusCache;
+        }
 
         // ── Danh sách tài khoản (kèm teacher info nếu có) ─────────────
         public async Task<List<UserResponse>> GetAllAsync(string callerRole)
@@ -267,6 +272,7 @@ namespace ClassManager.API.Services
 
             _db.Users.Remove(user);
             await _db.SaveChangesAsync();
+            _statusCache.Invalidate(id);
             return (true, null);
         }
 
@@ -286,6 +292,7 @@ namespace ClassManager.API.Services
             if (teacher != null) teacher.IsActive = user.IsActive;
 
             await _db.SaveChangesAsync();
+            _statusCache.Invalidate(user.Id);
             var teacherId   = await _db.Teachers.Where(t => t.UserId == user.Id).Select(t => (int?)t.Id).FirstOrDefaultAsync();
             var teacherName = await _db.Teachers.Where(t => t.UserId == user.Id).Select(t => t.FullName).FirstOrDefaultAsync();
             return (new UserResponse(user.Id, user.FullName, user.Email, user.Role, user.IsActive, user.CreatedAt, teacherId, teacherName), null);

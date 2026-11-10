@@ -86,7 +86,13 @@ namespace ClassManager.API.Services
     public class TeacherService
     {
         private readonly AppDbContext _db;
-        public TeacherService(AppDbContext db) => _db = db;
+        private readonly UserStatusCache _statusCache;
+
+        public TeacherService(AppDbContext db, UserStatusCache statusCache)
+        {
+            _db = db;
+            _statusCache = statusCache;
+        }
 
         public async Task<List<TeacherResponse>> GetAllAsync(int? userId = null)
         {
@@ -173,6 +179,7 @@ namespace ClassManager.API.Services
 
             _db.Teachers.Remove(teacher);
             await _db.SaveChangesAsync();
+            if (teacher.UserId.HasValue) _statusCache.Invalidate(teacher.UserId.Value);
             return true;
         }
 

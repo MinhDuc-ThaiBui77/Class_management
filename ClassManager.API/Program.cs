@@ -24,6 +24,8 @@ builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<ExpenseService>();
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<ExportService>();
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<UserStatusCache>();
 
 // ── JWT Authentication ────────────────────────────────────────────
 var jwtKey = builder.Configuration["Jwt:Key"]!;
@@ -300,11 +302,12 @@ app.Use(async (ctx, next) =>
         var userIdClaim = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (int.TryParse(userIdClaim, out var userId))
         {
-            var db = ctx.RequestServices.GetRequiredService<AppDbContext>();
-            var isActive = await db.Users
-                .Where(u => u.Id == userId)
-                .Select(u => u.IsActive)
-                .FirstOrDefaultAsync();
+            var statusCache = ctx.RequestServices.GetRequiredService<UserStatusCache>();
+            var isActive = await statusCache.IsActiveAsync(userId, () =>
+                ctx.RequestServices.GetRequiredService<AppDbContext>().Users
+                    .Where(u => u.Id == userId)
+                    .Select(u => u.IsActive)
+                    .FirstOrDefaultAsync());
             if (!isActive)
             {
                 ctx.Response.StatusCode = 401;

