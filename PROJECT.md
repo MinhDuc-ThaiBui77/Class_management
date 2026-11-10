@@ -1,7 +1,9 @@
 # ClassManagerWeb — Tài liệu thiết kế dự án
 
-> Mục đích: Giúp AI nắm nhanh toàn bộ tình trạng dự án để tiếp tục phát triển.
-> Cập nhật lần cuối: 2026-03-27
+> Mục đích: Giúp dev/AI nắm nhanh toàn bộ tình trạng dự án để tiếp tục phát triển.
+> Cập nhật lần cuối: 2026-11-10
+>
+> Tài liệu liên quan: [README.md](README.md) (kiến trúc C4, chạy local) · [docs/HUONG_DAN_SU_DUNG.md](docs/HUONG_DAN_SU_DUNG.md) (hướng dẫn người dùng)
 
 ---
 ## 1. Tổng quan
@@ -15,7 +17,8 @@
 - Chi phí cố định + phát sinh
 - Báo cáo tài chính (tháng/quý/năm) + biểu đồ + Excel export
 - Export Excel cho tất cả tabs
-- Import học sinh từ Excel
+- Import học sinh từ Excel (auto-detect header, dedup 3 tầng, plan-then-commit)
+- Quên mật khẩu: admin reset → user bắt buộc đổi MK khi đăng nhập
 - PWA: cài được lên màn hình điện thoại
 - Theme: Đỏ #DE2228 + Vàng #F6AB10
 
@@ -41,10 +44,30 @@
 
 ### 3.1 Luồng đăng nhập
 ```
-User → LoginPage → POST /api/auth/login → JWT token
+User → LoginPage → POST /api/auth/login → { token, fullName, email, role, mustChangePassword }
   → Lưu token + user vào localStorage
   → Axios interceptor gắn Bearer token mọi request
-  → 401 → auto clear + redirect /login
+  → 401 → auto clear + redirect /login (không reload nếu đang ở /login)
+  → mustChangePassword = true → Layout hiện popup nhắc đổi mật khẩu
+
+Lỗi đăng nhập ở LoginPage:
+  401           → "Email hoặc mật khẩu không đúng."
+  không response → "Không kết nối được máy chủ..." (mạng/CORS/server đang khởi động)
+  khác          → message từ server
+
+Mỗi request đã xác thực:
+  JWT middleware → middleware tự viết kiểm tra Users.IsActive (cache 60s qua UserStatusCache,
+  invalidate khi khoá/xoá user)
+  → tài khoản bị vô hiệu hoá → 401 "Tài khoản đã bị vô hiệu hóa." (kể cả token còn hạn)
+```
+
+### 3.1b Luồng quên mật khẩu
+```
+LoginPage → "Quên mật khẩu?" → hiện hướng dẫn liên hệ admin (không có email reset)
+Admin → AccountsPage → "Reset PW" → POST /api/users/{id}/reset-password { newPassword }
+  → Hash MK mới + MustChangePassword = true
+User đăng nhập bằng MK tạm → popup bắt đổi → PUT /api/users/me/password
+  → verify MK cũ, MK mới ≥ 6 ký tự → MustChangePassword = false
 ```
 
 ### 3.2 Luồng quản lý học sinh
@@ -52,12 +75,17 @@ User → LoginPage → POST /api/auth/login → JWT token
 Admin tạo HS thủ công:
   StudentsPage → Form → POST /api/students → DB
 
-Admin import Excel:
-  StudentsPage → ImportModal → Upload .xlsx → FE preview
-  → POST /api/students/import → Backend parse Excel
-  → Dedup (tên + SĐT) → Tạo mới / skip trùng
-  → Optional: enroll vào lớp (POST /api/classes/{id}/students/import)
-  → Transaction: import + enroll atomic
+Import Excel (chi tiết ở mục 7 "Import Excel"):
+  StudentsPage (manager+) hoặc ClassesPage → panel lớp → "Import" (teacher: lớp mình)
+  → ImportModal: Bước 1 chọn lớp (tuỳ chọn, set được ngày khai giảng)
+                 Bước 2 chọn .xlsx → FE preview + hiện cột nhận diện
+  → Không chọn lớp: POST /api/students/import       (multipart: file, dupDecisions?)
+    Có chọn lớp:    POST /api/classes/{id}/students/import
+  → Backend: parse → chuẩn hoá → phân loại TOÀN BỘ dòng trước khi ghi
+    → Còn dòng nghi trùng chưa có quyết định → KHÔNG ghi gì, trả suspects[]
+      → FE bắt user chọn "Tạo mới"/"Bỏ qua" cho từng dòng → gửi lại cả file + dupDecisions
+    → Đủ quyết định → 1 lần SaveChanges tạo tất cả HS mới
+    → Có lớp: enroll mọi HS ứng với các dòng (mới tạo hoặc đã có), trong 1 transaction
 
 Xóa HS (soft delete):
   DELETE /api/students/{id} → IsActive = false
@@ -102,8 +130,16 @@ Tạo buổi:
        → Nếu đạt: báo "Lớp X đã đạt tối đa Y buổi"
   → Tạo Session record + trả sessionIndex
 
+  Teacher chỉ tạo được buổi cho lớp mình; xoá buổi: manager+
+
 Xem chi tiết:
   Click ô filled → Floating modal hiện: lớp, môn, GV, phòng, ca, buổi X/Y, GV trực ca, nội dung
+
+Copy lịch tuần trước (manager+):
+  "Copy lịch từ tuần trước" → GET /api/attendance/sessions/copy-preview?week=<monday>
+  → Preview danh sách buổi tuần trước, đánh dấu conflict / vượt TotalSessions
+  → User tích chọn → POST /api/attendance/sessions/copy-week?week=<monday>  body: [sessionIds]
+  → Trả { created, replaced, skipped }; buổi conflict được chọn sẽ bị ghi đè; topic để trống
 ```
 
 ### 3.5 Luồng điểm danh
@@ -131,10 +167,20 @@ Admin tạo account:
   → POST /api/users → User + optional Teacher record
 
 Phân quyền runtime:
-  Login → JWT chứa role claim
-  → Backend: [Authorize(Roles = "...")] trên endpoints
-  → Frontend: isAdmin/isManager check → ẩn/hiện UI elements
-  → Teacher chỉ thấy: lớp mình dạy, HS mình, sessions mình
+  Login → JWT chứa claims: NameIdentifier(userId), Email, Role, Name
+  → Backend: [Authorize(Roles = Roles.ManagerUp / Roles.AdminUp)] trên endpoints
+  → Controller: CallerTeacherIdAsync() = null nếu manager+, ngược lại = Teacher.Id của user
+    → truyền vào service để lọc (teacher chỉ thấy lớp/HS/sessions/payments của mình)
+  → Frontend: useAuth() → canManage (manager+), canAdmin (admin+) → ẩn/hiện UI
+
+Thứ bậc vai trò (Models/User.cs → Roles):
+  owner(4) > admin(3) > manager(2) > teacher(1)
+  - Owner chỉ tạo qua cấu hình (Owner:Email/Password), không gán được qua UI
+  - Tạo/sửa/reset/khoá/xoá user: chỉ với user có role THẤP HƠN mình (owner được tất cả)
+  - Không tự đổi role / tự khoá / tự xoá chính mình
+  - Non-owner không thấy owner trong danh sách
+  - Role teacher bắt buộc gắn Teacher profile (chọn có sẵn hoặc tạo inline với môn + SĐT)
+  - Khoá user → Teacher.IsActive đồng bộ theo; xoá user → Teacher bị unlink + IsActive=false
 ```
 
 ### 3.7 Luồng học phí
@@ -201,8 +247,13 @@ Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 
 ## 5. API Endpoints
 
+Quyền ghi trong ngoặc; không ghi = mọi user đã đăng nhập (teacher bị lọc theo lớp mình).
+
+### Health
+- GET/HEAD `/health` (không cần token)
+
 ### Auth `/api/auth`
-- POST `/login` | POST `/register` | PUT `/change-password`
+- POST `/login` (anonymous) | POST `/register` (admin+) | PUT `/change-password`
 
 ### Users `/api/users` (admin+)
 - GET `/` | POST `/` | PUT `/{id}` | DELETE `/{id}`
@@ -210,21 +261,22 @@ Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 - GET `/available-teachers`
 
 ### Teachers `/api/teachers`
-- GET `/` | GET `/{id}` | POST `/` | PUT `/{id}` | DELETE `/{id}`
-- GET `/subjects` | GET `/available-users` | GET `/export`
+- GET `/` (teacher: chỉ hồ sơ mình) | GET `/{id}` | POST `/` (admin+) | PUT `/{id}` (admin+) | DELETE `/{id}` (admin+)
+- GET `/subjects` | GET `/available-users` (admin+) | GET `/export` (manager+)
 
 ### Students `/api/students`
-- GET `/?search=` | GET `/{id}` | POST `/` | PUT `/{id}` | DELETE `/{id}`
-- GET `/export` | GET `/import-template` | POST `/import`
+- GET `/?search=` | GET `/{id}` | POST `/` (teacher, manager+) | PUT `/{id}` (teacher: HS lớp mình) | DELETE `/{id}` (manager+, soft delete)
+- GET `/export` | GET `/import-template` | POST `/import` (manager+, multipart `file` + `dupDecisions` JSON `{row: "create"|"skip"}`)
 
 ### Classes `/api/classes`
-- GET `/` | GET `/{id}` | POST `/` | PUT `/{id}` | DELETE `/{id}`
-- GET `/{id}/students` | POST `/{id}/students` | DELETE `/{id}/students/{sid}`
-- POST `/{id}/students/import` | GET `/{id}/export` | GET `/{id}/export-attendance`
+- GET `/` | GET `/{id}` | POST `/` (manager+) | PUT `/{id}` (manager+) | DELETE `/{id}` (manager+)
+- GET `/{id}/students` | POST `/{id}/students` (teacher: lớp mình) | DELETE `/{id}/students/{sid}` (teacher: lớp mình)
+- POST `/{id}/students/import` (teacher: lớp mình) | GET `/{id}/export` | GET `/{id}/export-attendance?month=&year=`
 
 ### Attendance `/api/attendance`
-- GET `/sessions?week=` | POST `/sessions` | DELETE `/sessions/{id}`
-- PUT `/sessions/{id}/topic` | GET `/sessions/{id}` | POST `/`
+- GET `/sessions?week=` | POST `/sessions` (teacher: lớp mình) | DELETE `/sessions/{id}` (manager+)
+- GET `/sessions/copy-preview?week=` (manager+) | POST `/sessions/copy-week?week=` body `[sessionIds]` (manager+)
+- PUT `/sessions/{id}/topic` (teacher: lớp mình) | GET `/sessions/{id}` (teacher: lớp mình) | POST `/` (teacher: lớp mình; lưu điểm danh: validate status, chỉ nhận HS thuộc lớp, xoá record cũ của session rồi ghi lại)
 
 ### Payments `/api/payments`
 - GET `/` | POST `/` | DELETE `/{id}?reason=` | GET `/export?classId=`
@@ -305,11 +357,34 @@ Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 - GET /payments/logs chỉ admin+ xem được
 - Routing: `[HttpGet("logs")]` phải đặt TRƯỚC `[HttpGet]` để tránh conflict với `DELETE /{id}`
 
-### Import Excel
-- 3 cột: Họ tên, Địa chỉ, SĐT phụ huynh
-- Dedup: (tên + SĐT), HS trùng vẫn enroll vào lớp mới
-- Phone normalize: 9 số → thêm 0, validate 10 số
-- Transaction safety: import + enroll atomic
+### Import Excel (`Services/ImportService.cs`)
+- **Định dạng chuẩn** (dùng chung với Export học sinh → round-trip export → sửa → import được):
+  `Họ tên *`, `Địa chỉ`, `SĐT phụ huynh`, `Ngày sinh`, `Ngày nhập học`, `Ghi chú`.
+  Cột read-only khi export (STT, Lớp đang học) bị bỏ qua khi import.
+- **Auto-detect header**: quét 20 dòng đầu tìm ô khớp alias "Họ tên" (`Họ và tên`, `Tên học sinh`, `FullName`...); không thấy → coi dòng 1 là header. Map cột theo `ColumnAliases`.
+- **Chuẩn hoá**: tên qua `NameHelper.NormalizeVietnamese` (trim, gộp space, Title Case); so sánh dedup bằng `NormalizeForCompare` (lowercase).
+- **Dữ liệu sai → ghi chú, không lỗi**: SĐT (`PhoneHelper.TryNormalize`) hoặc ngày (`dd/MM/yyyy`, `d/M/yyyy`, `yyyy-MM-dd`, ...) không hợp lệ → để trống field, thêm `"SĐT gốc: ..."` / `"Ngày sinh gốc: ..."` vào Notes + warning. Dòng thiếu tên → error.
+- **Dedup 3 tầng** (so với HS active trong DB **và** các dòng trước trong cùng file):
+  1. Exact `tên + ngày sinh + SĐT` → tự skip (vẫn enroll nếu import vào lớp)
+  2. Partial `tên + SĐT` | `tên + ngày sinh` | `tên` (chỉ khi dòng không có SĐT lẫn ngày sinh) → **suspect**, cần quyết định `create`/`skip`
+  3. Không khớp → tạo mới
+- **Plan-then-commit**: phân loại hết rồi mới ghi. Còn suspect chưa quyết → trả `suspects` (kèm `ExistingRow` nếu trùng dòng khác trong file), **không ghi gì**. FE không có quyết định mặc định; nút xác nhận disable đến khi quyết hết.
+- Import vào lớp: bọc transaction, enroll các HS chưa có trong lớp.
+- FE khi set ngày khai giảng ở ImportModal gửi lại đủ field của lớp (tránh xoá teacher/notes/học phí/% chia).
+
+### Báo cáo (`Services/ReportService.cs`)
+- **Doanh thu** = tổng `Payment.Amount` có `PaidDate` trong kỳ.
+- **Doanh thu dự kiến** = tổng `Class.TuitionFee` của mọi StudentClass có HS active (không theo kỳ).
+- **Lương GV** (mỗi lớp) = `số buổi trong kỳ × số HS active trong lớp × 35.000 × TeacherSharePercent/100`. Hằng số `RATE_PER_STUDENT = 35000` hard-code ở 2 chỗ trong ReportService.
+- **Chi phí** = chi phí phát sinh có `ExpenseDate` trong kỳ + tổng chi phí `IsRecurring` × số tháng của kỳ.
+- **Lợi nhuận** = Doanh thu − (Lương GV + Chi phí).
+- **Tỷ lệ thu** = số (HS, lớp) đang ghi danh đã có Payment / tổng số ghi danh.
+- Biểu đồ `/chart?year=`: 12 tháng revenue / totalCost / profit.
+
+### Danh mục cố định (hard-code trong Services)
+- Môn (`SubjectList`): Toán, Văn, Tiếng Anh, Lý, Hoá, Luyện viết TH 1–5.
+- Phòng (`RoomList`), Ca (`TimeSlotList`): xem mục Lịch dạy ở trên.
+- FE nhóm lớp theo khối từ tên lớp: số 1–5 → "Tiểu học", ≥ 6 → "Khối N".
 
 ### SĐT
 - Toàn project: 10 số, bắt đầu bằng 0
@@ -333,19 +408,48 @@ Expenses: id, title, amount(12,2), expenseDate, isRecurring, notes, createdAt
 
 ## 9. Cấu hình
 
-### Default Admin
-- Email: `admin@classmanager.local` / Password: `Admin@123`
+### Khoá cấu hình backend
+`appsettings.json` KHÔNG commit (trong .gitignore) — dùng `appsettings.example.json` làm mẫu. Trên server có thể đặt bằng biến môi trường, dùng `__` thay cho `:` (vd. `ConnectionStrings__Default`, `Jwt__Key`).
+
+| Khoá | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `ConnectionStrings:Default` | ✓ | Chuỗi kết nối PostgreSQL |
+| `Jwt:Key` | ✓ | Secret HS256, ≥ 32 ký tự |
+| `Jwt:Issuer`, `Jwt:Audience` | ✓ | `ClassManagerAPI` / `ClassManagerApp` |
+| `AllowedOrigins` | ✓ nếu FE khác domain | Danh sách origin CORS, phân tách bằng dấu phẩy |
+| `Owner:Email`, `Owner:Password` | Production | Khi khởi động: tạo owner nếu chưa có email này; nếu user đã tồn tại thì nâng role lên owner (không đổi mật khẩu) |
+| `Backdoor:Key` | Không | Bật kill-switch khẩn cấp: đăng nhập bằng email trigger đặc biệt + key này → vô hiệu hoá và đổi MK ngẫu nhiên **mọi tài khoản trừ owner**. Không đặt key = tắt. Xem `AuthService.LoginAsync` |
+| `ASPNETCORE_ENVIRONMENT` | | `Development` bật seed owner mặc định |
+
+### Frontend
+| Biến build | Ý nghĩa |
+|---|---|
+| `VITE_API_URL` | Base URL API. Không đặt → `/api` (cùng domain; dev dùng Vite proxy) |
+
+### Owner mặc định (chỉ Development)
+- Nếu môi trường Development, không cấu hình `Owner:*` và chưa có owner → tạo `admin@classmanager.local` / `Admin@123`.
+- Ở môi trường **không phải** Development, tài khoản `admin@classmanager.local` bị **xoá** mỗi lần khởi động.
 
 ### Chạy local
 ```bash
 dotnet run          # Backend port 5227
 npm run dev         # Frontend port 5173 (proxy /api → 5227)
 ```
+Chi tiết: [README.md](README.md#chạy-local).
 
-### Deploy
-- Frontend: Vercel | Backend: Render (Dockerfile .NET 10)
-- `appsettings.json` KHÔNG commit (trong .gitignore), dùng `appsettings.example.json` làm template
+### Deploy (hiện tại)
+- Frontend: Vercel (`vercel.json` rewrite mọi route → `index.html`)
+- Backend: Render, build từ `ClassManager.API/Dockerfile` (build context = thư mục gốc repo), port 8080
+- Database: Supabase PostgreSQL (`SSL Mode=Require`)
+- Keep-alive: UptimeRobot ping `HEAD /health` để Render free tier không ngủ
 - `.npmrc` có `legacy-peer-deps=true` để Vercel resolve vite-plugin-pwa với Vite 8
+- Kế hoạch: chuyển toàn bộ (FE + API + DB) về server riêng — tài liệu `docs/DEPLOY.md` sẽ bổ sung khi chốt phương án
+
+### Khởi động backend (Program.cs) — thứ tự
+1. `db.Database.Migrate()` — chạy EF migrations
+2. Schema patches SQL idempotent (bên dưới)
+3. Seed / nâng quyền owner từ cấu hình; xoá seed account trên production
+4. Pipeline: ExceptionHandler → CORS → Authentication → active-user middleware → Authorization → Controllers
 
 ### Schema Patches (Program.cs, idempotent)
 - Student: Phone→Address
@@ -359,3 +463,20 @@ npm run dev         # Frontend port 5173 (proxy /api → 5227)
 - Performance indexes (7 indexes)
 - Users: MustChangePassword
 - PaymentLogs table
+- (Lịch sử) Class: TeacherSalaryPerSession — cột còn trong DB nhưng **không còn dùng** (lương GV giờ tính theo công thức % chia, xem mục Báo cáo)
+
+> Quy ước: thay đổi schema mới nên dùng EF migration (`dotnet ef migrations add ...`) thay vì thêm patch SQL vào Program.cs.
+
+---
+
+## 10. Tồn đọng kỹ thuật / lưu ý
+
+| # | Vấn đề | Vị trí | Ghi chú |
+|---|---|---|---|
+| 1 | Active-user middleware cache `IsActive` trong bộ nhớ 60s (`UserStatusCache`) | `Program.cs`, `Services/UserStatusCache.cs` | Chỉ đúng khi API chạy **1 instance**. Code mới đổi `User.IsActive` hoặc xoá user phải gọi `UserStatusCache.Invalidate` |
+| 2 | Dockerfile dùng image `10.0-preview` | `ClassManager.API/Dockerfile` | Nên chuyển sang `mcr.microsoft.com/dotnet/sdk:10.0` / `aspnet:10.0` |
+| 3 | `RATE_PER_STUDENT = 35000` hard-code, lặp 2 lần | `ReportService` | Nên đưa vào cấu hình hoặc một hằng số chung |
+| 4 | Comment trong `Models/Session.cs` (Room/TimeSlot) đã cũ | `Session.cs` | Giá trị đúng ở `RoomList`/`TimeSlotList` |
+| 5 | Kill-switch đăng nhập (email trigger) nằm trong mã nguồn | `AuthService.LoginAsync` | Chỉ chạy khi có `Backdoor:Key`; giữ key bí mật, cân nhắc nếu repo public |
+| 6 | Ảnh QR trỏ tới domain production | `class-manager-fe/public/qr-classmanager.png` | Phải tạo lại khi đổi domain |
+| 7 | `class-manager-fe/README.md` vẫn là README mẫu của Vite | | Thông tin dự án nằm ở README gốc |
