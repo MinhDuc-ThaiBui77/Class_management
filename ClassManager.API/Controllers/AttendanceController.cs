@@ -106,16 +106,38 @@ namespace ClassManager.API.Controllers
             }
         }
 
+        // Manager+ truy cập mọi buổi; teacher chỉ buổi của lớp mình dạy
+        private async Task<bool> CanAccessSessionAsync(int sessionId) =>
+            IsManagerUp || await _svc.IsTeacherOfSessionAsync(sessionId, await CallerTeacherIdAsync());
+
         [HttpGet("sessions/{sessionId}")]
         public async Task<IActionResult> GetForSession(int sessionId)
-            => Ok(await _svc.GetAttendanceForSessionAsync(sessionId));
+        {
+            if (!await CanAccessSessionAsync(sessionId)) return Forbid();
+            try
+            {
+                return Ok(await _svc.GetAttendanceForSessionAsync(sessionId));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+        }
 
-        // Điểm danh: tất cả role (teacher điểm danh lớp mình — service sẽ validate)
+        // Điểm danh: manager+ mọi lớp, teacher chỉ lớp mình
         [HttpPost]
         public async Task<IActionResult> Save(SaveAttendanceRequest req)
         {
-            await _svc.SaveAttendanceAsync(req);
-            return Ok(new { message = "Đã lưu điểm danh." });
+            if (!await CanAccessSessionAsync(req.SessionId)) return Forbid();
+            try
+            {
+                var ok = await _svc.SaveAttendanceAsync(req);
+                return ok ? Ok(new { message = "Đã lưu điểm danh." }) : NotFound(new { message = "Buổi học không tồn tại." });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
     }
 }

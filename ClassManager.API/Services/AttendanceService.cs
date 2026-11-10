@@ -297,22 +297,52 @@ namespace ClassManager.API.Services
             }).ToList();
         }
 
-        public async Task SaveAttendanceAsync(SaveAttendanceRequest req)
+        public async Task<bool> IsTeacherOfSessionAsync(int sessionId, int? teacherId)
         {
+            if (teacherId == null) return false;
+            return await _db.Sessions.AnyAsync(s => s.Id == sessionId && s.Class.TeacherId == teacherId.Value);
+        }
+
+        private static readonly string[] ValidStatuses = ["Present", "Absent", "Excused"];
+
+        /// <summary>Trả false nếu buổi học không tồn tại.</summary>
+        public async Task<bool> SaveAttendanceAsync(SaveAttendanceRequest req)
+        {
+            var classId = await _db.Sessions
+                .Where(s => s.Id == req.SessionId)
+                .Select(s => (int?)s.ClassId)
+                .FirstOrDefaultAsync();
+            if (classId == null) return false;
+
+            var invalid = req.Records.FirstOrDefault(r => !ValidStatuses.Contains(r.Status));
+            if (invalid != null)
+                throw new InvalidOperationException($"Trạng thái điểm danh không hợp lệ: \"{invalid.Status}\".");
+
+            // Chỉ ghi cho HS thuộc lớp của buổi học; mỗi HS một bản ghi (unique StudentId+SessionId)
+            var enrolled = await _db.StudentClasses
+                .Where(sc => sc.ClassId == classId.Value)
+                .Select(sc => sc.StudentId)
+                .ToHashSetAsync();
+
             var existing = await _db.Attendances
                 .Where(a => a.SessionId == req.SessionId)
                 .ToListAsync();
             _db.Attendances.RemoveRange(existing);
 
-            var newRecords = req.Records.Select(r => new Attendance
-            {
-                StudentId = r.StudentId,
-                SessionId = req.SessionId,
-                Status    = r.Status,
-                Reason    = r.Reason,
-            });
+            var newRecords = req.Records
+                .Where(r => enrolled.Contains(r.StudentId))
+                .GroupBy(r => r.StudentId)
+                .Select(g => g.Last())
+                .Select(r => new Attendance
+                {
+                    StudentId = r.StudentId,
+                    SessionId = req.SessionId,
+                    Status    = r.Status,
+                    Reason    = r.Reason ?? "",
+                });
             _db.Attendances.AddRange(newRecords);
             await _db.SaveChangesAsync();
+            return true;
         }
     }
 }
