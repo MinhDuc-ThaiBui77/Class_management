@@ -5,7 +5,15 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
-var builder = WebApplication.CreateBuilder(args);
+// Khi chạy như Windows Service, CWD là System32 → đặt content root về thư mục chứa exe
+// để đọc được appsettings.json. Không ảnh hưởng khi chạy bình thường (dev/Linux).
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args            = args,
+    ContentRootPath = Microsoft.Extensions.Hosting.WindowsServices.WindowsServiceHelpers.IsWindowsService()
+                        ? AppContext.BaseDirectory : null,
+});
+builder.Host.UseWindowsService(); // no-op nếu không chạy dưới Service Control Manager
 
 // ── Database ──────────────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(opt =>
@@ -100,9 +108,14 @@ using (var scope = app.Services.CreateScope())
                 WHERE table_name = 'Classes' AND column_name = 'TeacherSalaryPerSession'
             ) THEN
                 ALTER TABLE "Classes" ADD COLUMN "TeacherSalaryPerSession" numeric(12,2);
-                -- Copy salary từ Teacher sang các lớp của GV đó
-                UPDATE "Classes" c SET "TeacherSalaryPerSession" = t."SalaryPerSession"
-                FROM "Teachers" t WHERE c."TeacherId" = t."Id" AND t."SalaryPerSession" IS NOT NULL;
+                -- Copy salary từ Teacher sang các lớp của GV đó (chỉ DB cũ còn cột này; DB mới thì bỏ qua)
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'Teachers' AND column_name = 'SalaryPerSession'
+                ) THEN
+                    UPDATE "Classes" c SET "TeacherSalaryPerSession" = t."SalaryPerSession"
+                    FROM "Teachers" t WHERE c."TeacherId" = t."Id" AND t."SalaryPerSession" IS NOT NULL;
+                END IF;
             END IF;
             -- Drop SalaryPerSession cũ từ Teachers (nếu còn)
             IF EXISTS (
@@ -127,8 +140,14 @@ using (var scope = app.Services.CreateScope())
                 );
             END IF;
 
-            -- Xóa payment rác (ClassId=0, từ data cũ trước khi migrate)
-            DELETE FROM "Payments" WHERE "ClassId" = 0;
+            -- Xóa payment rác (ClassId=0, từ data cũ trước khi migrate).
+            -- DB mới: Payments chưa có ClassId (được thêm ở khối "Chuyển Payment" bên dưới) → bỏ qua
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Payments' AND column_name = 'ClassId'
+            ) THEN
+                DELETE FROM "Payments" WHERE "ClassId" = 0;
+            END IF;
 
             -- Thêm Room, TimeSlot vào Sessions (nếu chưa có)
             IF NOT EXISTS (
