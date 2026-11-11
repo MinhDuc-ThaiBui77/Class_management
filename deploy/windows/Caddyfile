@@ -1,0 +1,46 @@
+# ClassManager - Caddy config (copied to C:\ClassManager\caddy\Caddyfile by 04-install-caddy.ps1)
+# Plain HTTP on loopback only; TLS/public exposure is done later by an outbound tunnel.
+{
+	admin off
+	auto_https off
+	log {
+		output file C:/ClassManager/logs/caddy.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}
+
+# ":8080" (no host) so requests arriving via a tunnel with any Host header still match.
+http://:8080 {
+	bind 127.0.0.1
+	encode zstd gzip
+
+	log {
+		output file C:/ClassManager/logs/caddy-access.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+	}
+
+	# API + health check -> Kestrel
+	@api path /api/* /health
+	handle @api {
+		reverse_proxy 127.0.0.1:5000
+	}
+
+	# Hashed build assets: cache forever, real 404 if missing (no SPA fallback here)
+	handle /assets/* {
+		root * C:/ClassManager/web
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# Everything else: SPA. index.html, sw.js, manifest, client routes -> always revalidate
+	handle {
+		root * C:/ClassManager/web
+		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}
