@@ -15,6 +15,7 @@ interface Class {
   totalSessions: number | null
   tuitionFee: number | null
   currentSessions: number
+  teacherSharePercent: number
 }
 
 interface Teacher {

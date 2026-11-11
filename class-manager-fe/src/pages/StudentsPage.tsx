@@ -53,7 +53,7 @@ export default function StudentsPage() {
     } finally { setLoading(false) }
   }
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
     setSearch(val)

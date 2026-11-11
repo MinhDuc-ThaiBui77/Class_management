@@ -20,7 +20,7 @@ function parseNumber(formatted: string): string {
   return digits || ''
 }
 
-export default function CurrencyInput({ value, onChange, placeholder = '500.000', className = '', min, required }: Props) {
+export default function CurrencyInput({ value, onChange, placeholder = '500.000', className = '', required }: Props) {
   const [display, setDisplay] = useState(() => formatNumber(value))
 
   useEffect(() => {

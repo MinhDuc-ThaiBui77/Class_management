@@ -168,7 +168,6 @@ function toDateStr(d: Date) {
 function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(r.getDate() + n); return r }
 
 export default function AttendancePage() {
-  const { canManage } = useAuth()
   const [tab, setTab] = useState<'attendance' | 'schedule'>('attendance')
 
   return (
@@ -537,7 +536,7 @@ function ScheduleTab() {
     <div className="flex flex-col lg:flex-row gap-4">
       {/* Left: Mini calendar + legend + stats — hidden on mobile */}
       <div className="hidden lg:block flex-shrink-0 space-y-3 w-64">
-        <MiniCalendar selectedDate={toDateStr(weekStart)} onSelect={(ds: string) => setWeekStart(getMonday(new Date(ds + 'T00:00')))} sessionDates={sessionDates} mode="week" />
+        <MiniCalendar selectedDate={toDateStr(weekStart)} onSelect={handleCalendarSelect} sessionDates={sessionDates} mode="week" />
 
         {/* Stats */}
         <div className="bg-white rounded-xl border border-gray-100 p-3 text-xs space-y-2">
