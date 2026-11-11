@@ -7,7 +7,7 @@
 | [README.md](README.md) (file này) | Dev: tổng quan kiến trúc (C4), cách chạy local |
 | [PROJECT.md](PROJECT.md) | Dev/AI: chi tiết nghiệp vụ, API, schema, quy ước |
 | [docs/HUONG_DAN_SU_DUNG.md](docs/HUONG_DAN_SU_DUNG.md) | Người dùng cuối: admin, quản lý, giáo viên |
-| `docs/DEPLOY.md` | Hướng dẫn deploy — *sẽ bổ sung* |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Triển khai trên server Windows: cài đặt, cập nhật, backup/khôi phục, Tailscale Funnel |
 
 ---
 

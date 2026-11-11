@@ -325,7 +325,7 @@ Quyền ghi trong ngoặc; không ghi = mọi user đã đăng nhập (teacher b
 
 ### PWA
 - `vite-plugin-pwa` với `registerType: autoUpdate`
-- Service Worker cache static assets + NetworkFirst cho API calls
+- Service Worker chỉ precache static assets; **không** cache API (tránh hiện dữ liệu cũ), `/api` và `/health` bị loại khỏi navigate fallback
 - Manifest: `display: standalone`, theme `#DE2228`, icons 192+512px
 - iOS: `apple-mobile-web-app-capable` meta tag cho fullscreen mode
 - Cài: Chrome Android → banner tự hiện | Safari iOS → Share → "Thêm vào màn hình chính"
@@ -402,7 +402,7 @@ Quyền ghi trong ngoặc; không ghi = mọi user đã đăng nhập (teacher b
 - **Stale-while-revalidate**: Cache data, hiện ngay khi revisit
 - **Local state update**: Enroll/unenroll không reload toàn bộ class list
 - **Cache students**: ClassesPage load all students 1 lần on mount
-- **PWA Workbox**: cache static assets, NetworkFirst cho API (timeout 10s)
+- **PWA Workbox**: precache static assets (không cache API)
 
 ---
 
@@ -437,13 +437,13 @@ npm run dev         # Frontend port 5173 (proxy /api → 5227)
 ```
 Chi tiết: [README.md](README.md#chạy-local).
 
-### Deploy (hiện tại)
-- Frontend: Vercel (`vercel.json` rewrite mọi route → `index.html`)
-- Backend: Render, build từ `ClassManager.API/Dockerfile` (build context = thư mục gốc repo), port 8080
-- Database: Supabase PostgreSQL (`SSL Mode=Require`)
-- Keep-alive: UptimeRobot ping `HEAD /health` để Render free tier không ngủ
-- `.npmrc` có `legacy-peer-deps=true` để Vercel resolve vite-plugin-pwa với Vite 8
-- Kế hoạch: chuyển toàn bộ (FE + API + DB) về server riêng — tài liệu `docs/DEPLOY.md` sẽ bổ sung khi chốt phương án
+### Deploy (hiện tại, từ 11/2026)
+Server Windows tự quản, chi tiết ở [docs/DEPLOY.md](docs/DEPLOY.md):
+- Tailscale Funnel (HTTPS, `https://classmanager.ayu-dorian.ts.net`) → Caddy `127.0.0.1:8080` (SPA + proxy `/api`) → API là Windows service `127.0.0.1:5000` → PostgreSQL 17 `127.0.0.1:5432`
+- Script cài và cập nhật: [deploy/windows/](deploy/windows/); backup `pg_dump` lúc 02:00, giữ 14 ngày
+- API chạy được như Windows service nhờ `UseWindowsService()` (content root = thư mục exe); ngoài Service Control Manager thì không ảnh hưởng gì
+
+Di sản (bản deploy cũ Vercel + Render + Supabase, đã thay thế): `vercel.json`, `ClassManager.API/Dockerfile`, `.npmrc` (`legacy-peer-deps=true` cho Vercel).
 
 ### Khởi động backend (Program.cs) — thứ tự
 1. `db.Database.Migrate()` — chạy EF migrations
@@ -474,9 +474,11 @@ Chi tiết: [README.md](README.md#chạy-local).
 | # | Vấn đề | Vị trí | Ghi chú |
 |---|---|---|---|
 | 1 | Active-user middleware cache `IsActive` trong bộ nhớ 60s (`UserStatusCache`) | `Program.cs`, `Services/UserStatusCache.cs` | Chỉ đúng khi API chạy **1 instance**. Code mới đổi `User.IsActive` hoặc xoá user phải gọi `UserStatusCache.Invalidate` |
-| 2 | Dockerfile dùng image `10.0-preview` | `ClassManager.API/Dockerfile` | Nên chuyển sang `mcr.microsoft.com/dotnet/sdk:10.0` / `aspnet:10.0` |
+| 2 | Dockerfile dùng image `10.0-preview` | `ClassManager.API/Dockerfile` | Không dùng trong deploy hiện tại; nếu dùng lại thì chuyển sang `mcr.microsoft.com/dotnet/sdk:10.0` / `aspnet:10.0` |
 | 3 | `RATE_PER_STUDENT = 35000` hard-code, lặp 2 lần | `ReportService` | Nên đưa vào cấu hình hoặc một hằng số chung |
 | 4 | Comment trong `Models/Session.cs` (Room/TimeSlot) đã cũ | `Session.cs` | Giá trị đúng ở `RoomList`/`TimeSlotList` |
 | 5 | Kill-switch đăng nhập (email trigger) nằm trong mã nguồn | `AuthService.LoginAsync` | Chỉ chạy khi có `Backdoor:Key`; giữ key bí mật, cân nhắc nếu repo public |
 | 6 | Ảnh QR trỏ tới domain production | `class-manager-fe/public/qr-classmanager.png` | Phải tạo lại khi đổi domain |
 | 7 | `class-manager-fe/README.md` vẫn là README mẫu của Vite | | Thông tin dự án nằm ở README gốc |
+| 8 | ESLint FE còn ~33 lỗi có từ trước | `class-manager-fe` | `npm run build` (tsc) đã sạch; `npm run lint` chưa |
+| 9 | Chưa có backup ngoài máy | `C:\ClassManager\backups` | Xem [docs/DEPLOY.md](docs/DEPLOY.md#4-sao-lưu) |
