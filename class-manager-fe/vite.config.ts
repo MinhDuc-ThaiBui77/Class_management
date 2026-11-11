@@ -34,17 +34,11 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Chỉ cache giao diện (file tĩnh). Không cache dữ liệu API: tránh lưu dữ liệu học sinh/học phí
+        // trong trình duyệt và tránh hiện dữ liệu cũ.
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\/api\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 10,
-            },
-          },
-        ],
+        navigateFallbackDenylist: [/^\/api\//, /^\/health/],
+        cleanupOutdatedCaches: true,
       },
     }),
   ],
